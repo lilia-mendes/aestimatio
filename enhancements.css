@@ -74,7 +74,7 @@
   padding:8px clamp(16px,3vw,52px);background:rgba(255,255,255,.97);
   border-bottom:1px solid #dce5ef;box-shadow:0 5px 18px #0f244014;
   opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-8px);
-  transition:opacity .16s ease,transform .16s ease,visibility .16s;
+  transition:opacity .16s ease,transform .16s ease,visibility .16s,left .2s ease;
 }
 .grade-sticky-header.visible{opacity:1;visibility:visible;transform:translateY(0)}
 .grade-sticky-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:100%;min-width:0}
@@ -94,7 +94,7 @@
   box-shadow:0 5px 18px #0f244014;
   padding:8px clamp(16px,3vw,52px);
   opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-8px);
-  transition:opacity .16s ease,transform .16s ease,visibility .16s;
+  transition:opacity .16s ease,transform .16s ease,visibility .16s,left .2s ease;
 }
 .global-sticky-header.visible{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0)}
 .global-sticky-inner{display:flex;align-items:center;gap:12px;min-height:40px}
