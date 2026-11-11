@@ -143,9 +143,12 @@ async function listDocs(){
     }
     const localMatch=files=>files.filter(f=>normalized(f.name).includes(query));
     let matches=localMatch(found);
-    if(raw&&!matches.length){
-      truncated=false;
-      matches=localMatch(await fetchPages(domain,3000));
+    if(raw&&matches.length<25){
+      // A pesquisa indexada do Drive pode omitir palavras com acentos,
+      // subcadeias interiores e alguns tipos de ficheiro.
+      const broad=localMatch(await fetchPages(domain,3000));
+      const combined=new Map([...matches,...broad].map(f=>[f.id,f]));
+      matches=[...combined.values()];
     }
     const dedup=new Map();
     for(const f of matches)dedup.set(f.id,f);
