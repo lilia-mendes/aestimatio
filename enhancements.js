@@ -9,8 +9,8 @@ const AEST={
     let list=db.domainConfigs.filter(d=>d.classId===cid);
     if(!list.length){
       const legacy=[...new Set(db.questions.filter(q=>db.assessments.some(a=>a.id===q.assessmentId&&a.classId===cid)).map(q=>q.domain).filter(Boolean))];
-      const base=legacy.length?legacy:['Tratamento de Fontes','Compreensão Histórica','Comunicação em História'];
       const standard={'Tratamento de Fontes':20,'Compreensão Histórica':60,'Comunicação em História':20};
+      const base=!legacy.length||legacy.every(name=>Object.prototype.hasOwnProperty.call(standard,name))?Object.keys(standard):legacy;
       base.forEach((name,i)=>db.domainConfigs.push({id:uid(),classId:cid,name,weight:standard[name]??(100/base.length)}));
       list=db.domainConfigs.filter(d=>d.classId===cid);
     }
@@ -90,8 +90,7 @@ migrateData=function(data){
 assessmentResult=function(a,s){return AEST.result(a,s)};
 periodResult=function(s,p){return AEST.periodResult(s,p)};
 domainResult=function(a,s,d){const ass=by('assessments',a);return ass?AEST.resultsByDomain(ass,s).find(x=>x.name===d)?.score20??null:null};
-const oldSetView=setView;
-setView=function(v){oldSetView(v)};
+
 function editDomains(){
   if(!classId){toast('Seleciona uma turma',true);return}
   const ds=AEST.domainsFor(classId);
@@ -131,7 +130,7 @@ editAssessment=function(id=''){
   draftQuestions=id?questions(id).map(x=>({...x})):[];
   const types=['Teste','Questão de aula','Trabalho'];
   const select='<div class="field"><label>Tipo</label><select name="type" onchange="refreshQuestionType()">'+types.map(type=>'<option '+((a.type||'Teste')===type?'selected':'')+'>'+type+'</option>').join('')+'</select></div>';
-  openModal(id?'Editar avaliação':'Nova avaliação','<div class="formgrid">'+field('Nome','name',a.name||'')+select+field('Data','date',a.date||new Date().toISOString().slice(0,10),'date')+field('Peso relativo no período','weight',a.weight??1,'number','min="0" step="0.01"')+'<div class="full">'+field('Google Docs · ID (opcional)','docId',a.docId||'')+'</div></div><div class="divider"></div><div class="flex between"><h3>Perguntas / critérios</h3><div class="flex"><button type="button" class="btn small" onclick="editDomains()">Configurar domínios</button><button type="button" class="btn small" onclick="addQuestion()">+ Adicionar</button></div></div><div id="questionEditor">'+questionRows()+'</div><p class="hint">Os testes e questões de aula totalizam 200 pontos; os Trabalhos usam critérios classificados de 0 a 200, cujos pesos totalizam 100%.</p>',f=>{
+  openModal(id?'Editar avaliação':'Nova avaliação','<div class="formgrid">'+field('Nome','name',a.name||'')+select+field('Data','date',a.date||new Date().toISOString().slice(0,10),'date')+field('Peso relativo no período','weight',a.weight??1,'number','min="0" step="0.01"')+'<div class="full">'+field('Google Docs · ID (opcional)','docId',a.docId||'')+'</div></div><div class="divider"></div><div class="flex between"><h3>Perguntas / critérios</h3><div class="flex"><button type="button" class="btn small" onclick="closeModal();editDomains()">Configurar domínios</button><button type="button" class="btn small" onclick="addQuestion()">+ Adicionar</button></div></div><div id="questionEditor">'+questionRows()+'</div><p class="hint">Os testes e questões de aula totalizam 200 pontos; os Trabalhos usam critérios classificados de 0 a 200, cujos pesos totalizam 100%.</p>',f=>{
     captureQuestions();
     const name=String(f.get('name')||'').trim(),type=f.get('type'),weight=Number(f.get('weight'));
     if(!name||!Number.isFinite(weight)||weight<0)throw Error('Nome ou peso inválido.');
