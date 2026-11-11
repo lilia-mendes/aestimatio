@@ -108,23 +108,26 @@ function editDomains(){
   });
 }
 questionRows=function(){
-  const ds=AEST.domainsFor(classId),isWork=E('modal')?.open&&E('modalBody')?.querySelector('[name="type"]')?.value==='Trabalho';
-  return draftQuestions.map((q,i)=>'<div class="formgrid" style="align-items:end;margin-bottom:9px" data-qi="'+i+'"><div class="field"><label>'+(isWork?'Critério':'Pergunta / enunciado')+'</label><input class="qname" value="'+esc(q.name)+'" required></div><div class="field"><label>Domínio</label><select class="qdomain">'+ds.map(d=>'<option value="'+esc(d.name)+'" '+(d.name===q.domain?'selected':'')+'>'+esc(d.name)+'</option>').join('')+'</select></div><div class="field"><label>'+(isWork?'Peso do critério (%)':'Cotação (pontos)')+'</label><input class="qmax" type="number" min="'+(isWork?'0':'0.01')+'" max="200" step="0.01" value="'+(isWork?(q.criterionWeight??25):q.max)+'" required></div><div><button type="button" class="btn danger small" onclick="delQuestion('+i+')">Remover</button></div></div>').join('');
+  const ds=AEST.domainsFor(classId),isWork=E('modalBody')?.querySelector('[name="type"]')?.value==='Trabalho';
+  return draftQuestions.map((q,i)=>'<div class="formgrid" style="align-items:end;margin-bottom:9px" data-qi="'+i+'"><div class="field"><label>'+(isWork?'Critério':'Pergunta / enunciado')+'</label><input class="qname" value="'+esc(q.name)+'" required></div>'+(isWork?'':'<div class="field"><label>Domínio</label><select class="qdomain">'+ds.map(d=>'<option value="'+esc(d.name)+'" '+(d.name===q.domain?'selected':'')+'>'+esc(d.name)+'</option>').join('')+'</select></div>')+'<div class="field"><label>'+(isWork?'Peso do critério (%)':'Cotação (pontos)')+'</label><input class="qmax" type="number" min="'+(isWork?'0':'0.01')+'" max="200" step="0.01" value="'+(isWork?(q.criterionWeight??25):q.max)+'" required></div><div><button type="button" class="btn danger small" onclick="delQuestion('+i+')">Remover</button></div></div>').join('');
 };
 captureQuestions=function(){
   const isWork=E('modalBody')?.querySelector('[name="type"]')?.value==='Trabalho';
   const rows=[...E('questionEditor').querySelectorAll('[data-qi]')];
-  draftQuestions=rows.map((r,i)=>({id:draftQuestions[i]?.id||uid(),name:r.querySelector('.qname').value,domain:r.querySelector('.qdomain').value,max:isWork?200:Number(r.querySelector('.qmax').value),criterionWeight:isWork?Number(r.querySelector('.qmax').value):undefined,order:i+1}));
+  draftQuestions=rows.map((r,i)=>({id:draftQuestions[i]?.id||uid(),name:r.querySelector('.qname').value,...(isWork?{}:{domain:r.querySelector('.qdomain')?.value||draftQuestions[i]?.domain||AEST.domainsFor(classId)[0]?.name||''}),max:isWork?200:Number(r.querySelector('.qmax').value),...(isWork?{criterionWeight:Number(r.querySelector('.qmax').value)}:{}),order:i+1}));
 };
 addQuestion=function(){
   captureQuestions();const work=E('modalBody')?.querySelector('[name="type"]')?.value==='Trabalho';
-  draftQuestions.push({id:uid(),name:work?'Critério '+(draftQuestions.length+1):'Pergunta '+(draftQuestions.length+1),domain:AEST.domainsFor(classId)[0]?.name||'',max:work?200:10,criterionWeight:work?0:undefined,order:draftQuestions.length+1});
+  draftQuestions.push({id:uid(),name:work?'Critério '+(draftQuestions.length+1):'Pergunta '+(draftQuestions.length+1),...(work?{}:{domain:AEST.domainsFor(classId)[0]?.name||''}),max:work?200:10,...(work?{criterionWeight:0}:{}),order:draftQuestions.length+1});
   E('questionEditor').innerHTML=questionRows();
 };
 function refreshQuestionType(){
-  captureQuestions();
   const work=E('modalBody')?.querySelector('[name="type"]')?.value==='Trabalho';
-  if(work)draftQuestions.forEach(q=>{q.criterionWeight=Number(q.criterionWeight??0);q.max=200});
+  const rows=[...E('questionEditor').querySelectorAll('[data-qi]')];
+  const beforeWork=rows.length?rows[0].querySelector('.qdomain')===null:work;
+  draftQuestions=rows.map((r,i)=>({id:draftQuestions[i]?.id||uid(),name:r.querySelector('.qname').value,domain:beforeWork?undefined:(r.querySelector('.qdomain')?.value||draftQuestions[i]?.domain),max:beforeWork?200:Number(r.querySelector('.qmax').value),criterionWeight:beforeWork?Number(r.querySelector('.qmax').value):draftQuestions[i]?.criterionWeight,order:i+1}));
+  if(work)draftQuestions=draftQuestions.map(q=>({id:q.id,name:q.name,max:200,criterionWeight:Number(q.criterionWeight??0),order:q.order}));
+  else draftQuestions=draftQuestions.map(q=>({id:q.id,name:q.name,domain:q.domain||AEST.domainsFor(classId)[0]?.name||'',max:Number(q.max)||10,order:q.order}));
   E('questionEditor').innerHTML=questionRows();
 }
 editAssessment=function(id=''){
