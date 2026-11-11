@@ -429,3 +429,68 @@ reportsPage=function(){
   const panes={instrument:()=>AEST.instrumentReport(),semester:()=>AEST.semesterReport(),student:()=>AEST.studentReport(),class:()=>AEST.classReport(),global:()=>AEST.globalReport()};
   return '<div class="reporting">'+AEST.reportTabMenu()+AEST.reportHeader()+panes[AEST.reportTab]()+'</div>';
 };
+
+/* Editable, finite domain catalog per class. */
+function domainEditorRows(items){
+  return items.map((d,i)=>'<div class="formgrid domain-edit-row" data-domain-row="'+i+'"><div class="field"><label>Nome do domínio</label><input class="domain-edit-name" value="'+esc(d.name)+'" required></div><div class="field"><label>Peso (%)</label><input class="domain-edit-weight" type="number" min="0" max="100" step="0.01" value="'+esc(d.weight)+'" required></div><div><button type="button" class="btn danger small" onclick="removeDomainEditorRow('+i+')">Remover</button></div></div>').join('');
+}
+let domainDraft=[];
+editDomains=function(){
+  if(!classId){toast('Seleciona uma turma antes de configurar os domínios.',true);return}
+  domainDraft=AEST.domainsFor(classId).map(d=>({...d}));
+  openModal('Domínios · '+(by('classes',classId)?.name||'turma'),'<p class="hint">Configura a lista de domínios e o seu peso na nota das avaliações. A soma dos pesos deve ser 100%. Cada pergunta utiliza um domínio desta lista.</p><div id="domainEditor">'+domainEditorRows(domainDraft)+'</div><button type="button" class="btn small" onclick="addDomainEditorRow()">+ Domínio</button>',f=>{
+    captureDomainDraft();
+    if(!domainDraft.length||domainDraft.some(d=>!d.name.trim()||!Number.isFinite(Number(d.weight))||Number(d.weight)<0))throw Error('Indica pelo menos um domínio válido.');
+    if(Math.abs(domainDraft.reduce((n,d)=>n+Number(d.weight),0)-100)>0.01)throw Error('Os pesos dos domínios devem somar 100%.');
+    if(new Set(domainDraft.map(d=>d.name.toLowerCase())).size!==domainDraft.length)throw Error('Existem domínios repetidos.');
+    const previous=db.domainConfigs.filter(d=>d.classId===classId);
+    for(const item of previous){
+      const next=domainDraft.find(d=>d.id===item.id);
+      const used=db.questions.some(q=>q.domain===item.name&&db.assessments.some(a=>a.id===q.assessmentId&&a.classId===classId));
+      if(!next&&used)throw Error('Não podes eliminar o domínio «'+item.name+'» enquanto estiver associado a perguntas.');
+      if(next&&item.name!==next.name){
+        db.questions.forEach(q=>{if(q.domain===item.name&&db.assessments.some(a=>a.id===q.assessmentId&&a.classId===classId))q.domain=next.name});
+      }
+    }
+    db.domainConfigs=db.domainConfigs.filter(d=>d.classId!==classId).concat(domainDraft.map(d=>({id:d.id,classId,name:d.name.trim(),weight:Number(d.weight)})));
+  });
+};
+function captureDomainDraft(){
+  const rows=[...E('domainEditor').querySelectorAll('.domain-edit-row')];
+  domainDraft=rows.map((row,i)=>({...domainDraft[i],id:domainDraft[i]?.id||uid(),name:row.querySelector('.domain-edit-name').value.trim(),weight:Number(row.querySelector('.domain-edit-weight').value)}));
+}
+function addDomainEditorRow(){
+  captureDomainDraft();domainDraft.push({id:uid(),classId,name:'Novo domínio',weight:0});
+  E('domainEditor').innerHTML=domainEditorRows(domainDraft);
+}
+function removeDomainEditorRow(index){
+  captureDomainDraft();domainDraft.splice(index,1);E('domainEditor').innerHTML=domainEditorRows(domainDraft);
+}
+const baseSettingsPage=settingsPage;
+settingsPage=function(){
+  const core=baseSettingsPage();
+  const picker='<div class="field"><label>Turma</label><select onchange="setClass(this.value)">'+db.classes.map(c=>'<option value="'+esc(c.id)+'" '+(c.id===classId?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></div>';
+  const doms=AEST.domainsFor(classId);
+  const section='<section class="panel"><div class="flex between"><h2>Domínios de avaliação</h2><button class="btn primary" onclick="editDomains()" '+(!classId?'disabled':'')+'>Configurar domínios</button></div><p class="hint">Cada turma utiliza uma lista controlada de domínios; os pesos devem somar 100%. Os enunciados selecionam um destes domínios.</p>'+picker+'<div class="tablewrap"><table><thead><tr><th>Domínio</th><th>Peso</th></tr></thead><tbody>'+doms.map(d=>'<tr><td>'+esc(d.name)+'</td><td>'+fmt(d.weight)+'%</td></tr>').join('')+'</tbody></table></div></section>';
+  return '<div class="layout"><div class="span12">'+section+'</div></div>'+core;
+};
+const baseAssessmentsPage=assessmentsPage;
+assessmentsPage=function(){
+  const p=by('periods',periodId);
+  return wrap('<div class="panel"><div class="flex between"><h2>Avaliações · '+esc(p?.name||'—')+'</h2><button class="btn primary" onclick="editAssessment()" '+(!periodId?'disabled':'')+'>+ Nova avaliação</button></div><p class="hint">Testes e Questões de Aula: perguntas com cotação total de 200 pontos. Trabalhos: critérios classificados de 0 a 200 com pesos que somam 100%.</p><div class="tablewrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Data</th><th>Perguntas / critérios</th><th>Peso no semestre</th><th>Ações</th></tr></thead><tbody>'+assessments().map(a=>'<tr><td><strong>'+esc(a.name)+'</strong></td><td>'+esc(a.type)+'</td><td>'+esc(a.date||'—')+'</td><td>'+questions(a.id).length+'</td><td>'+fmt(a.weight)+'</td><td><button class="btn small" onclick="editAssessment(\''+a.id+'\')">Editar</button> <button class="btn small primary" onclick="assessmentId=\''+a.id+'\';setView(\'grades\')">Classificar</button> <button class="btn danger small" onclick="removeAssessment(\''+a.id+'\')">Remover</button></td></tr>').join('')+'</tbody></table></div></div>');
+};
+const oldMetaFunction=meta;
+meta=function(){
+  oldMetaFunction();
+  if(view==='grades'){E('pageTitle').textContent='Classificar aluno';E('subtitle').textContent='Pontuações, anotações e nota por domínio.'}
+  if(view==='reports'){E('pageTitle').textContent='Relatórios de avaliação';E('subtitle').textContent='Pautas e dashboards de alunos e turmas.'}
+};
+const oldRenderFunction=render;
+render=function(){
+  if(!Array.isArray(db.domainConfigs))db.domainConfigs=[];
+  for(const c of db.classes)AEST.domainsFor(c.id);
+  oldRenderFunction();
+};
+for(const c of db.classes)AEST.domainsFor(c.id);
+save();
+render();
