@@ -180,8 +180,10 @@ function updateIndividualSummary(){
   const slot=E('individualSummary');if(slot)slot.innerHTML=individualSummary(a,s);
 }
 function individualSummary(a,s){
-  const r=AEST.result(a,s),ds=AEST.resultsByDomain(a,s);
-  return '<div class="layout"><div class="panel span6 stat"><label>Pontos obtidos</label><strong>'+(r?AEST.fmt20(r.earned)+' / '+fmt(r.total):'—')+'</strong></div><div class="panel span6 stat"><label>'+(r&&!r.full?'Nota provisória':'Nota')+'</label><strong>'+(r?AEST.fmt20(r.full?r.score20:r.provisional20)+' / 20':'—')+'</strong></div></div><section class="panel"><h3>Classificação por domínio</h3><div class="tablewrap"><table><thead><tr><th>Domínio</th><th>Peso</th><th>Pontos / cotação</th><th>Nota / 20</th></tr></thead><tbody>'+ds.map(d=>'<tr><td>'+esc(d.name)+'</td><td>'+fmt(d.weight)+'%</td><td>'+AEST.fmt20(d.earned)+' / '+fmt(d.max)+'</td><td><strong>'+AEST.fmt20(d.score20)+'</strong></td></tr>').join('')+'</tbody></table></div></section>';
+  const r=AEST.result(a,s),ds=AEST.resultsByDomain(a,s),isWork=a.type==='Trabalho';
+  const metrics='<div class="layout"><div class="panel span6 stat"><label>'+(isWork?'Soma das pontuações dos critérios':'Pontos obtidos')+'</label><strong>'+(r?AEST.fmt20(r.earned)+' / '+fmt(r.total):'—')+'</strong></div><div class="panel span6 stat"><label>'+(r&&!r.full?'Nota provisória':'Nota')+'</label><strong>'+(r?AEST.fmt20(r.full?r.score20:r.provisional20)+' / 20':'—')+'</strong></div></div>';
+  if(isWork)return metrics+'<section class="panel"><p class="hint">A nota do Trabalho resulta da ponderação dos critérios, sem associação a domínios. O Trabalho contribui para a nota global do período, mas não para a evolução das notas por domínio.</p></section>';
+  return metrics+'<section class="panel"><h3>Classificação por domínio</h3><div class="tablewrap"><table><thead><tr><th>Domínio</th><th>Peso</th><th>Pontos / cotação</th><th>Nota / 20</th></tr></thead><tbody>'+ds.map(d=>'<tr><td>'+esc(d.name)+'</td><td>'+fmt(d.weight)+'%</td><td>'+AEST.fmt20(d.earned)+' / '+fmt(d.max)+'</td><td><strong>'+AEST.fmt20(d.score20)+'</strong></td></tr>').join('')+'</tbody></table></div></section>';
 }
 function individualClassSelect(type){
   const options=db.classes.map(c=>'<option value="'+esc(c.id)+'" '+(c.id===classId?'selected':'')+'>'+esc(c.name)+'</option>').join('');
@@ -307,7 +309,7 @@ AEST.instrumentReport=function(){
     const details=isDomain?this.resultsByDomain(a,s.id).map(d=>this.fmt20(d.score20)):qs.map(q=>{const score=grade(a.id,s.id,q.id);return score===null?'—':fmt(score)+' / '+fmt(q.max)});
     return [esc(s.name),...details,'<strong>'+this.fmt20(this.result(a,s.id)?.score20)+'</strong>'];
   });
-  return '<section class="panel"><div class="flex between"><h2>Pauta · '+esc(a.name)+'</h2><button class="btn" onclick="exportExcel()">↓ Excel</button></div><div class="report-tools">'+switcher+'<span class="hint">Valores dos domínios em 0–20, com uma casa decimal. As perguntas mostram pontos e cotação.</span></div>'+this.reportTable(['Aluno',...columns,'Nota / 20'],rows)+'</section>';
+  return '<section class="panel"><div class="flex between"><h2>Pauta · '+esc(a.name)+'</h2><button class="btn" onclick="exportExcel()">↓ Excel</button></div><div class="report-tools">'+switcher+'<span class="hint">'+(isWork?'Critérios sem domínio: notas 0–200 e média ponderada para a nota final.':'Valores dos domínios em 0–20, com uma casa decimal. As perguntas mostram pontos e cotação.')+'</span></div>'+this.reportTable(['Aluno',...columns,'Nota / 20'],rows)+'</section>';
 };
 AEST.semesterReport=function(){
   const ass=assessments(),list=students(),weights=ass.reduce((n,a)=>n+Number(a.weight||0),0);
