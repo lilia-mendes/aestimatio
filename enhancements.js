@@ -297,7 +297,7 @@ AEST.instrumentReport=function(){
   if(!a)return '<section class="panel empty">Ainda não há instrumentos para este período.</section>';
   const qs=questions(a.id),ds=this.domainsFor(classId),isDomain=this.reportDetail==='domain';
   const switcher='<div class="field"><label>Detalhe da pauta</label><select onchange="AEST.reportDetail=this.value;render()"><option value="domain" '+(isDomain?'selected':'')+'>Por domínio</option><option value="question" '+(!isDomain?'selected':'')+'>Por pergunta / critério</option></select></div>';
-  const columns=isDomain?ds.map(d=>d.name):qs.map((q,i)=>(a.type==='Trabalho'?'Critério ':'Pergunta ')+(i+1));
+  const columns=isDomain?ds.map(d=>d.name+' ('+fmt(d.weight)+'%)'):qs.map((q,i)=>(a.type==='Trabalho'?'Critério ':'Pergunta ')+(i+1));
   const rows=students().map(s=>{
     const details=isDomain?this.resultsByDomain(a,s.id).map(d=>this.fmt20(d.score20)):qs.map(q=>{const score=grade(a.id,s.id,q.id);return score===null?'—':fmt(score)+' / '+fmt(q.max)});
     return [esc(s.name),...details,'<strong>'+this.fmt20(this.result(a,s.id)?.score20)+'</strong>'];
@@ -309,9 +309,11 @@ AEST.semesterReport=function(){
   const headers=['Aluno',...ass.map(a=>a.name+' ('+(weights?this.fmt20(a.weight/weights*100):'0')+'%)'),'★ Bónus','Nota final / 20'];
   const rows=list.map(s=>{
     const r=this.periodResult(s.id,periodId);
-    return [esc(s.name),...ass.map(a=>this.fmt20(this.result(a,s.id)?.score20)),'+'+this.fmt20(bonus(s.id,periodId)),'<strong>'+this.fmt20(r?.total)+'</strong>'];
+    const effective=ass.map(a=>({a,r:this.result(a,s.id)})).filter(x=>x.r&&x.r.score20!==null&&Number(x.a.weight)>0);
+    const w=effective.reduce((n,x)=>n+Number(x.a.weight),0);
+    return [esc(s.name),...ass.map(a=>{const found=effective.find(x=>x.a.id===a.id);return found&&w?this.fmt20(found.r.score20)+' <span class="hint">→ '+this.fmt20(found.r.score20*Number(a.weight)/w)+'</span>':'—'}),'+'+this.fmt20(bonus(s.id,periodId)),'<strong>'+this.fmt20(r?.total)+'</strong>'];
   });
-  return '<section class="panel"><div class="flex between"><h2>Pauta final · '+esc(by('periods',periodId)?.name||'')+'</h2><button class="btn" onclick="exportExcel()">↓ Excel</button></div><p class="hint">Cada instrumento apresenta a nota e a ponderação no cabeçalho. O bónus das estrelas é aplicado à média ponderada, até ao limite de 20 valores.</p>'+this.reportTable(headers,rows)+'</section>';
+  return '<section class="panel"><div class="flex between"><h2>Pauta final · '+esc(by('periods',periodId)?.name||'')+'</h2><button class="btn" onclick="exportExcel()">↓ Excel</button></div><p class="hint">Cada instrumento apresenta nota → contributo ponderado (valores). As estrelas acrescentam um bónus à média, até ao máximo de 20 valores.</p>'+this.reportTable(headers,rows)+'</section>';
 };
 AEST.currentDomainScores=function(s,p=periodId,cid=classId){
   return this.domainsFor(cid).map(d=>({name:d.name,weight:d.weight,score:this.domainAssessmentAverage(s,p,d.name)}));
@@ -362,7 +364,7 @@ AEST.studentReport=function(){
   if(!student)return '<div class="panel empty">Seleciona um aluno.</div>';
   const pr=this.periodResult(s,periodId),domains=this.currentDomainScores(s);
   const comps=assessments().map(a=>{
-    const r=this.result(a,s);return '<div class="report-component"><span>'+esc(a.name)+' <small>('+esc(a.type)+')</small></span><strong>'+this.fmt20(r?.score20)+'</strong><span class="hint">Peso '+fmt(a.weight)+'</span></div>';
+    const r=this.result(a,s),active=assessments().filter(x=>this.result(x,s)?.score20!==null&&this.result(x,s)&&Number(x.weight)>0),w=active.reduce((n,x)=>n+Number(x.weight),0),contrib=r?.score20!==null&&r&&w?r.score20*Number(a.weight)/w:null;return '<div class="report-component"><span>'+esc(a.name)+' <small>('+esc(a.type)+')</small></span><strong>'+this.fmt20(r?.score20)+' <small>→ '+this.fmt20(contrib)+'</small></strong><span class="hint">Peso '+fmt(a.weight)+'</span></div>';
   }).join('');
   const domainTable=this.reportTable(['Domínio','Peso','Nota / 20'],domains.map(d=>[esc(d.name),fmt(d.weight)+'%',this.fmt20(d.score)]));
   const notes=this.annotationList(s);
