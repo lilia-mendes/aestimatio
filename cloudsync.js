@@ -66,6 +66,7 @@ const AESTSYNC={
     return {data:out,conflicts};
   },
   adopt(data){
+    try{const key='atlas_backup_cloud_'+new Date().toISOString().slice(0,10);if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(db))}catch(e){console.warn('Cópia de segurança local indisponível',e)}
     const localCfg={clientId:db.settings.clientId,spreadsheetId:db.settings.spreadsheetId,driveFolderId:db.settings.driveFolderId,lastSync:db.settings.lastSync};
     for(const k of this.keys())db[k]=JSON.parse(JSON.stringify(data[k]||[]));
     db.settings={...db.settings,...data.settings,...localCfg};
