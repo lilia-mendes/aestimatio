@@ -21,7 +21,7 @@ const AESTSYNC={
   setBase(data){
     try{localStorage.setItem(this.baselineKey(),JSON.stringify(this.snapshot(data)))}catch(e){this.state='Sem espaço para histórico de sincronização';}
   },
-  setStatus(s){this.state=s;const el=E('cloudSyncState');if(el)el.textContent=s},
+  setStatus(s){this.state=s;const el=E('cloudSyncState');if(el)el.textContent=s;if(typeof updateCloudHeader==='function')updateCloudHeader()},
   async fetchCloud(){
     const id=db.settings.spreadsheetId;
     if(!id||!googleToken)throw Error('Liga primeiro a conta Google e seleciona a base.');
@@ -162,7 +162,10 @@ function aestStampRevisions(){
 }
 save=function(){
   if(!AESTSYNC.suspendRevision)aestStampRevisions();
-  standardSave();AESTSYNC.schedule();
+  standardSave();
+  if(googleToken&&db.settings.spreadsheetId&&AESTSYNC.getBase()&&!AESTSYNC.busy&&AESTSYNC.state.indexOf('Conflito:')!==0)AESTSYNC.setStatus('Alterações locais por sincronizar');
+  AESTSYNC.schedule();
+  if(typeof updateCloudHeader==='function')updateCloudHeader();
 };
 const standardPushSheets=pushSheets;
 pushSheets=async function(){
@@ -205,6 +208,75 @@ const previousSettingsPageCloud=settingsPage;
 settingsPage=function(){
   return '<section class="panel"><div class="flex between"><h2>Sincronização automática entre dispositivos</h2><button class="btn" onclick="copyGoogleDeviceLink()">Copiar ligação para outro dispositivo</button></div><p class="hint">Após o primeiro envio ou importação, as alterações são sincronizadas ao ligar à Google. A aplicação verifica conflitos antes de enviar; se encontrar alterações incompatíveis, não substitui os dados.</p><div id="cloudSyncState" class="note">'+esc(AESTSYNC.state)+'</div></section>'+previousSettingsPageCloud();
 };
+/* Header sync status: connection, pending edits, active sync and conflicts. */
+function cloudConnectionState(){
+  if(typeof navigator!=='undefined'&&navigator.onLine===false)return {key:'offline',label:'Sem rede',detail:'Sem Internet: as alterações permanecem guardadas neste navegador.'};
+  if(!db.settings.clientId)return {key:'disconnected',label:'Google desligado',detail:'Configura primeiro o Client ID OAuth nas Definições.'};
+  if(!googleToken)return {key:'disconnected',label:'Ligar Google',detail:'Sessão Google não autorizada ou expirada. Clica para autenticar.'};
+  if(!db.settings.spreadsheetId)return {key:'disconnected',label:'Sem base Google',detail:'Seleciona a base de dados nas Definições.'};
+  if(AESTSYNC.busy||/^A sincronizar/i.test(AESTSYNC.state))return {key:'busy',label:'A sincronizar',detail:'A comunicar com o Google Sheets.'};
+  if(/^Conflito:/i.test(AESTSYNC.state))return {key:'conflict',label:'Conflito',detail:AESTSYNC.state+' Abre as Definições antes de voltar a enviar dados.'};
+  if(/^(Por sincronizar|Sem espaço|O Drive mudou|Dados locais e do Drive diferentes)/i.test(AESTSYNC.state))return {key:'error',label:'Por sincronizar',detail:AESTSYNC.state};
+  const base=AESTSYNC.getBase();
+  if(!base)return {key:'pending',label:'Ativar sincronização',detail:'Faz primeiro um envio ou importação nas Definições.'};
+  try{
+    if(!AESTSYNC.eq(base,AESTSYNC.snapshot()))return {key:'pending',label:'Pendente',detail:'Existem alterações locais por enviar ao Google Sheets. Clica para sincronizar.'};
+  }catch(e){return {key:'error',label:'Verificar ligação',detail:'Não foi possível verificar o estado local.'}}
+  if(/^Sincronizado|^Sincronização automática ativada/i.test(AESTSYNC.state))return {key:'synced',label:'Sincronizado',detail:'Google Sheets sincronizado na última verificação. Clica para verificar agora.'};
+  if(/^A atualizar a lista/i.test(AESTSYNC.state))return {key:'pending',label:'Pendente',detail:AESTSYNC.state};
+  return {key:'pending',label:'Verificar',detail:'Clica para verificar a sincronização com o Google Sheets.'};
+}
+function updateCloudHeader(){
+  const status=cloudConnectionState();
+  const bar=E('globalStickyHeader');
+  if(bar){bar.dataset.sync=status.key;bar.classList.toggle('cloud-alert',!['synced','busy'].includes(status.key));bar.classList.toggle('cloud-busy',status.key==='busy')}
+  for(const id of ['globalCloudSyncButton','topCloudSyncButton']){
+    const b=E(id);if(!b)continue;
+    b.dataset.sync=status.key;
+    b.setAttribute('aria-label',status.detail);
+    b.setAttribute('title',status.detail);
+    const label=E(id==='globalCloudSyncButton'?'globalCloudSyncLabel':'topCloudSyncLabel');
+    if(label)label.textContent=status.label;
+    const icon=b.querySelector('.cloud-status-symbol');
+    if(icon)icon.textContent=status.key==='synced'?'✓':status.key==='busy'?'⟳':status.key==='disconnected'?'↪':status.key==='conflict'?'!':'⟳';
+  }
+}
+async function cloudSyncAction(){
+  const status=cloudConnectionState();
+  if(status.key==='busy')return;
+  if(status.key==='offline'){toast('Sem Internet. Os dados mantêm-se guardados neste navegador.',true);return}
+  if(!db.settings.clientId||!db.settings.spreadsheetId){
+    setView('settings');
+    toast('Configura a ligação Google e seleciona a base de dados.',true);
+    return;
+  }
+  if(!googleToken){
+    AESTSYNC.setStatus('A autenticar…');
+    googleSignIn();
+    return;
+  }
+  if(status.key==='conflict'){
+    setView('settings');
+    toast('Há um conflito de sincronização. Não serão substituídos dados automaticamente.',true);
+    return;
+  }
+  if(!AESTSYNC.getBase()){
+    setView('settings');
+    toast('Faz primeiro um envio ou importação explícitos para ativar a sincronização.',true);
+    return;
+  }
+  await AESTSYNC.sync();
+  if(AESTSYNC.state.startsWith('Sincronizado'))toast('Google Sheets sincronizado.');
+  else if(!AESTSYNC.busy)toast(AESTSYNC.state,true);
+}
+const googleSignInBeforeIndicator=googleSignIn;
+googleSignIn=function(){AESTSYNC.setStatus('A autenticar…');return googleSignInBeforeIndicator()};
+window.addEventListener('online',()=>{updateCloudHeader();if(googleToken)AESTSYNC.sync()});
+window.addEventListener('offline',updateCloudHeader);
+window.addEventListener('focus',updateCloudHeader);
+document.addEventListener('visibilitychange',updateCloudHeader);
+updateCloudHeader();
+
 window.addEventListener('focus',()=>{if(googleToken)AESTSYNC.sync()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&googleToken)AESTSYNC.sync()});
 setInterval(()=>{if(googleToken)AESTSYNC.sync()},60000);
