@@ -444,10 +444,11 @@ AEST.globalMean=function(cs,order,domain,date){
 reportsPage=function(){
   if(!db.classes.length)return '<div class="panel empty">Cria uma turma.</div>';
   const panes={instrument:()=>AEST.instrumentReport(),semester:()=>AEST.semesterReport(),student:()=>AEST.studentReport(),class:()=>AEST.classReport(),global:()=>AEST.globalReport()};
+  const selectors=AEST.reportHeader();
   const student=by('students',AEST.reportStudent),clazz=by('classes',classId),period=by('periods',periodId);
   const sticky=AEST.reportTab==='student'&&student?
     '<div id="studentDashboardStickyHeader" class="grade-sticky-header" aria-hidden="true"><div class="grade-sticky-inner"><div class="grade-sticky-identity"><strong>'+esc(student.name)+'</strong><span>'+esc(clazz?.name||'Turma não selecionada')+'</span></div><div class="grade-sticky-assessment"><strong>Dashboard do aluno</strong><span>'+esc(period?.name||'Período não selecionado')+'</span></div></div></div>':'';
-  return '<div class="reporting">'+AEST.reportTabMenu()+AEST.reportHeader()+sticky+panes[AEST.reportTab]()+'</div>';
+  return '<div class="reporting">'+AEST.reportTabMenu()+selectors+sticky+panes[AEST.reportTab]()+'</div>';
 };
 
 /* Editable, finite domain catalog per class. */
