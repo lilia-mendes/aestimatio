@@ -122,3 +122,20 @@
 @media(max-width:700px){.cloud-status-action{padding:6px 8px;gap:4px;font-size:11px}.cloud-status-toolbar{padding:7px 9px}}
 @media(max-width:430px){.global-sticky-header .cloud-status-label{display:none}.global-sticky-header .cloud-status-action{width:37px;padding:4px}.global-sticky-title{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.cloud-status-action[data-sync="busy"] .cloud-status-symbol{animation:none}.global-sticky-header{transition:none}}
+
+
+/* Relatórios: hierarchical navigation within the existing sidebar. */
+.report-nav-group{display:grid;gap:3px;min-width:0}
+.nav .report-nav-parent{width:100%;display:flex;align-items:center;gap:12px}
+.report-nav-chevron{margin-left:auto;font-size:18px;font-weight:700;line-height:1}
+.report-nav-submenu{display:grid;gap:2px;margin:0 0 5px 24px;padding:0 0 0 11px;border-left:1px solid #44617f;min-width:0}
+.report-nav-submenu[hidden]{display:none}
+.nav .report-nav-child{display:block;width:100%;text-align:left;padding:9px 10px;font-size:12px;line-height:1.3;color:#b8cce6;border-radius:8px;white-space:normal;overflow-wrap:anywhere}
+.nav .report-nav-child.active{background:#345d8e;color:#fff}
+.nav .report-nav-child:hover{background:#284868;color:#fff}
+body.sidebar-collapsed .report-nav-submenu{display:none}
+@media(max-width:920px){
+  body.sidebar-collapsed .report-nav-submenu:not([hidden]){display:grid}
+  .report-nav-submenu{margin-left:24px}
+  .nav .report-nav-child{padding:10px 8px}
+}
