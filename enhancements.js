@@ -138,6 +138,7 @@ editAssessment=function(id=''){
     if(draftQuestions.some(q=>!q.name.trim()||!AEST.domainsFor(classId).some(d=>d.name===q.domain)))throw Error('Define enunciados e seleciona domínios válidos.');
     if(draftQuestions.length&&Math.abs(total-(isWork?100:200))>.001)throw Error(isWork?'Os pesos dos critérios devem somar 100%.':'A soma das cotações deve ser 200 pontos.');
     if(draftQuestions.some(q=>!Number.isFinite(isWork?Number(q.criterionWeight):Number(q.max))||(isWork?Number(q.criterionWeight)<0:Number(q.max)<=0)))throw Error('Cotações ou pesos inválidos.');
+    if(id){const prior=questions(id),removed=prior.filter(q=>!draftQuestions.some(d=>d.id===q.id));const gradedRemoved=removed.some(q=>db.grades.some(g=>g.questionId===q.id&&g.score!==null));if(gradedRemoved)throw Error('Não podes remover perguntas ou critérios já classificados. Preserva o histórico das notas.');const inconsistent=draftQuestions.some(q=>db.grades.some(g=>g.questionId===q.id&&g.score!==null&&Number(g.score)>Number(isWork?200:q.max)));if(inconsistent)throw Error('Há classificações superiores à nova cotação. Corrige-as antes de reduzir a cotação.');if(a.type!==type&&prior.some(q=>db.grades.some(g=>g.questionId===q.id&&g.score!==null)))throw Error('Não podes alterar o tipo de um instrumento que já contém classificações.');}
     const x={name,type,date:f.get('date'),weight,docId:String(f.get('docId')||'').trim()};
     let aid=id;
     if(id)Object.assign(a,x);else{aid=uid();db.assessments.push({id:aid,classId,periodId,...x})}
@@ -234,12 +235,13 @@ googleSignIn=function(){
   const cid=db.settings.clientId;
   if(!cid){toast('Configura primeiro o Client ID OAuth.',true);return}
   if(!window.google?.accounts?.oauth2){toast('Autenticação Google ainda não disponível.',true);return}
+  let consentRetried=false;
   tokenClient=google.accounts.oauth2.initTokenClient({
     client_id:cid,scope:SCOPES,
     callback:async response=>{
       if(response.error){
-        if(response.error==='interaction_required'||response.error==='consent_required'){
-          toast('A Google requer nova autorização.',true);tokenClient.requestAccessToken({prompt:'consent'});return;
+        if((response.error==='interaction_required'||response.error==='consent_required')&&!consentRetried){
+          consentRetried=true;toast('A Google requer nova autorização.',true);tokenClient.requestAccessToken({prompt:'consent'});return;
         }
         toast('Não foi possível iniciar sessão: '+response.error,true);return;
       }
