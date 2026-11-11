@@ -103,3 +103,22 @@
 @media(max-width:920px){.global-sticky-header{left:0;padding:8px 14px;z-index:45}.grade-sticky-header{z-index:44}}
 @media(max-width:450px){.global-sticky-inner{gap:9px}.global-sticky-title{font-size:15px}}
 @media(prefers-reduced-motion:reduce){.global-sticky-header{transition:none;transform:none}}
+
+/* Sync health in the persistent header and a manual action when the header is in view. */
+.global-sticky-header{transition:background .2s ease,border-color .2s ease,opacity .16s ease,transform .16s ease,visibility .16s,left .2s ease}
+.global-sticky-header.cloud-alert{background:linear-gradient(105deg,#fff5f3 0%,#ffe9e8 52%,#f8c7cd 100%);border-bottom-color:#eaa9ad}
+.global-sticky-header.cloud-busy{background:linear-gradient(100deg,#eff5ff 0%,#f3f7ff 65%,#e2edff 100%)}
+.global-sticky-title{flex:1}
+.cloud-status-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;max-width:215px;border:1px solid #d9e3ec;border-radius:9px;padding:6px 10px;background:#fff;color:#334155;font-size:12px;font-weight:700;cursor:pointer;flex:none;white-space:nowrap}
+.cloud-status-action:hover{filter:brightness(.97)}
+.cloud-status-action:focus-visible{outline:3px solid #2e69c8;outline-offset:2px}
+.cloud-status-action[data-sync="synced"]{background:#edf8f3;border-color:#b4dccb;color:#135c44}
+.cloud-status-action[data-sync="busy"]{background:#eaf1ff;border-color:#afc7f4;color:#204e93}
+.cloud-status-action[data-sync="pending"],.cloud-status-action[data-sync="error"],.cloud-status-action[data-sync="offline"],.cloud-status-action[data-sync="disconnected"],.cloud-status-action[data-sync="conflict"]{background:#fff4f3;border-color:#e7abae;color:#9b3540}
+.cloud-status-symbol{display:inline-grid;place-items:center;width:19px;min-width:19px;font-size:17px;line-height:1}
+.cloud-status-action[data-sync="busy"] .cloud-status-symbol{animation:cloud-status-spin 1s linear infinite}
+@keyframes cloud-status-spin{to{transform:rotate(360deg)}}
+.cloud-status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:700px){.cloud-status-action{padding:6px 8px;gap:4px;font-size:11px}.cloud-status-toolbar{padding:7px 9px}}
+@media(max-width:430px){.global-sticky-header .cloud-status-label{display:none}.global-sticky-header .cloud-status-action{width:37px;padding:4px}.global-sticky-title{font-size:14px}}
+@media(prefers-reduced-motion:reduce){.cloud-status-action[data-sync="busy"] .cloud-status-symbol{animation:none}.global-sticky-header{transition:none}}
