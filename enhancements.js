@@ -448,7 +448,7 @@ reportsPage=function(){
   const student=by('students',AEST.reportStudent),clazz=by('classes',classId),period=by('periods',periodId);
   const sticky=AEST.reportTab==='student'&&student?
     '<div id="studentDashboardStickyHeader" class="grade-sticky-header" aria-hidden="true"><div class="grade-sticky-inner"><div class="grade-sticky-identity"><strong>'+esc(student.name)+'</strong><span>'+esc(clazz?.name||'Turma não selecionada')+'</span></div><div class="grade-sticky-assessment"><strong>Dashboard do aluno</strong><span>'+esc(period?.name||'Período não selecionado')+'</span></div></div></div>':'';
-  return '<div class="reporting">'+AEST.reportTabMenu()+selectors+sticky+panes[AEST.reportTab]()+'</div>';
+  return '<div class="reporting">'+selectors+sticky+panes[AEST.reportTab]()+'</div>';
 };
 
 /* Editable, finite domain catalog per class. */
@@ -601,8 +601,71 @@ function updateGradingStickyHeader(){
 }
 window.addEventListener('scroll',updateGradingStickyHeader,{passive:true});
 window.addEventListener('resize',updateGradingStickyHeader);
+/* Sidebar submenu replaces the five horizontal report/dashboard tabs. */
+const reportSidebarEntries=[
+  {id:'instrument',label:'Pauta por instrumento',description:'Notas de cada instrumento por pergunta ou domínio.'},
+  {id:'semester',label:'Pauta semestral',description:'Classificação final do período e contributos.'},
+  {id:'student',label:'Dashboard do aluno',description:'Resultados individuais e evolução por domínio.'},
+  {id:'class',label:'Dashboard da turma',description:'Evolução dos alunos e das médias por domínio.'},
+  {id:'global',label:'Dashboard global',description:'Comparação das turmas e evolução por domínio.'}
+];
+AEST.reportMenuOpen=true;
+function renderReportSidebarNav(){
+  const nav=E('nav');
+  if(!nav)return;
+  const existing=nav.querySelector('button[onclick="setView(\'reports\')"]');
+  if(!existing)return;
+  const group=document.createElement('div');
+  group.className='report-nav-group';
+  const expanded=!!AEST.reportMenuOpen;
+  const parentActive=view==='reports';
+  group.innerHTML='<button type="button" class="report-nav-parent'+(parentActive?' active':'')+'" onclick="toggleReportSubmenu()" aria-expanded="'+expanded+'" aria-controls="reportSidebarSubmenu"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Relatórios de avaliação</span><span class="report-nav-chevron nav-label" aria-hidden="true">'+(expanded?'⌄':'›')+'</span></button>'+
+    '<div id="reportSidebarSubmenu" class="report-nav-submenu" '+(expanded?'':'hidden')+'>'+reportSidebarEntries.map(entry=>
+      '<button type="button" class="report-nav-child'+(parentActive&&AEST.reportTab===entry.id?' active':'')+'" '+(parentActive&&AEST.reportTab===entry.id?'aria-current="page"':'')+' onclick="openReportView(\''+entry.id+'\')">'+entry.label+'</button>'
+    ).join('')+'</div>';
+  existing.replaceWith(group);
+}
+function toggleReportSubmenu(){
+  AEST.reportMenuOpen=!AEST.reportMenuOpen;
+  if(AEST.reportMenuOpen&&!window.matchMedia('(max-width:920px)').matches&&document.body.classList.contains('sidebar-collapsed')){
+    document.body.classList.remove('sidebar-collapsed');
+    syncSidebar();
+  }
+  const group=E('nav')?.querySelector('.report-nav-group');
+  if(!group)return;
+  const parent=group.querySelector('.report-nav-parent'),submenu=group.querySelector('.report-nav-submenu');
+  if(parent){
+    parent.setAttribute('aria-expanded',String(AEST.reportMenuOpen));
+    const chevron=parent.querySelector('.report-nav-chevron');
+    if(chevron)chevron.textContent=AEST.reportMenuOpen?'⌄':'›';
+  }
+  if(submenu)submenu.hidden=!AEST.reportMenuOpen;
+  updateGradingStickyHeader();
+}
+function openReportView(tab){
+  if(!reportSidebarEntries.some(entry=>entry.id===tab))return;
+  AEST.reportTab=tab;
+  AEST.reportMenuOpen=true;
+  AEST.reportSeries={};
+  view='reports';
+  render();
+  if(window.matchMedia('(max-width:920px)').matches)closeSidebar();
+  window.scrollTo(0,0);
+}
+function updateReportPageHeading(){
+  if(view!=='reports')return;
+  const entry=reportSidebarEntries.find(item=>item.id===AEST.reportTab)||reportSidebarEntries[0];
+  E('crumb').textContent='RELATÓRIOS DE AVALIAÇÃO';
+  E('pageTitle').textContent=entry.label;
+  E('subtitle').textContent=entry.description;
+}
 const renderBeforeSticky=render;
-render=function(){renderBeforeSticky();updateGradingStickyHeader()};
+render=function(){
+  renderBeforeSticky();
+  renderReportSidebarNav();
+  updateReportPageHeading();
+  updateGradingStickyHeader();
+};
 const toggleBeforeSticky=toggleSidebar;
 toggleSidebar=function(){toggleBeforeSticky();updateGradingStickyHeader()};
 const closeBeforeSticky=closeSidebar;
