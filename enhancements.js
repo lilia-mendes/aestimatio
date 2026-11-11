@@ -197,13 +197,15 @@ gradesPage=function(){
   const ss=students();
   if(!ss.some(s=>s.id===AEST.selectedStudent))AEST.selectedStudent=ss[0]?.id||'';
   const s=AEST.selectedStudent,qs=a?questions(a.id):[];
-  const selectors='<div class="panel"><div class="filters">'+individualClassSelect()+'<div class="field"><label>Período / semestre</label><select onchange="setPeriod(this.value)">'+periods().map(p=>'<option value="'+p.id+'" '+(p.id===periodId?'selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></div><div class="field"><label>Instrumento</label><select onchange="assessmentId=this.value;render()">'+ass.map(x=>'<option value="'+x.id+'" '+(x.id===assessmentId?'selected':'')+'>'+esc(x.name)+' · '+esc(x.type)+'</option>').join('')+'</select></div><div class="field"><label>Aluno</label><select onchange="AEST.selectedStudent=this.value;render()">'+ss.map(x=>'<option value="'+x.id+'" '+(x.id===s?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div></div></div>';
+  const selectors='<div class="panel" id="gradeSelectors"><div class="filters">'+individualClassSelect()+'<div class="field"><label>Período / semestre</label><select onchange="setPeriod(this.value)">'+periods().map(p=>'<option value="'+p.id+'" '+(p.id===periodId?'selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></div><div class="field"><label>Instrumento</label><select onchange="assessmentId=this.value;render()">'+ass.map(x=>'<option value="'+x.id+'" '+(x.id===assessmentId?'selected':'')+'>'+esc(x.name)+' · '+esc(x.type)+'</option>').join('')+'</select></div><div class="field"><label>Aluno</label><select onchange="AEST.selectedStudent=this.value;render()">'+ss.map(x=>'<option value="'+x.id+'" '+(x.id===s?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div></div></div>';
   if(!a)return selectors+'<section class="panel empty">Cria um instrumento de avaliação para começar.</section>';
   const rows=qs.map((q,i)=>{
     const g=db.grades.find(g=>g.assessmentId===a.id&&g.studentId===s&&g.questionId===q.id);
     return '<section class="panel individual-question"><div class="question-text" title="Expandir/recolher apenas o enunciado" onclick="this.classList.toggle(\'expanded\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'){this.click()}"><strong>'+(i+1)+'. </strong>'+esc(q.name)+' <span aria-hidden="true">⌄</span></div><div class="hint">'+(a.type==='Trabalho'?'Peso do critério: '+fmt(q.criterionWeight)+' pontos · classificação de 0 a 200':esc(q.domain)+' · Cotação '+fmt(q.max)+' pontos')+'</div><div class="formgrid individual-fields"><div class="field"><label>Classificação (0–'+fmt(q.max)+')</label><input type="number" min="0" max="'+fmt(q.max)+'" step="0.01" value="'+(g?.score??'')+'" onchange="setGrade(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this)"></div><div class="field"><label>Anotação</label><textarea rows="2" onchange="setGradeNote(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this)">'+esc(g?.note||'')+'</textarea></div></div></section>';
   }).join('');
-  return '<div class="individual-grading">'+selectors+'<div class="flex between"><h2>'+esc(a.name)+'</h2><span class="chip">'+esc(a.type)+'</span></div>'+rows+'<div id="individualSummary">'+individualSummary(a,s)+'</div><div class="flex between"><button class="btn" onclick="navigateStudent(-1)">← Aluno anterior</button><button class="btn primary" onclick="navigateStudent(1)">Aluno seguinte →</button></div></div>';
+  const pupil=by('students',s),clazz=by('classes',classId);
+  const sticky='<div id="gradeStickyHeader" class="grade-sticky-header" aria-hidden="true"><div class="grade-sticky-inner"><div class="grade-sticky-identity"><strong>'+esc(pupil?.name||'Aluno não selecionado')+'</strong><span>'+esc(clazz?.name||'Turma não selecionada')+'</span></div><div class="grade-sticky-assessment"><strong>'+esc(a.name)+'</strong><span>'+esc(a.type)+'</span></div></div></div>';
+  return '<div class="individual-grading">'+selectors+sticky+'<div class="flex between"><h2>'+esc(a.name)+'</h2><span class="chip">'+esc(a.type)+'</span></div>'+rows+'<div id="individualSummary">'+individualSummary(a,s)+'</div><div class="flex between"><button class="btn" onclick="navigateStudent(-1)">← Aluno anterior</button><button class="btn primary" onclick="navigateStudent(1)">Aluno seguinte →</button></div></div>';
 };
 function navigateStudent(step){const ss=students(),i=ss.findIndex(s=>s.id===AEST.selectedStudent);AEST.selectedStudent=ss[Math.max(0,Math.min(ss.length-1,i+step))]?.id||'';render()}
 
@@ -562,3 +564,19 @@ excelSheets=function(){
   data['Dominios configurados']=db.domainConfigs.map(d=>({Turma:by('classes',d.classId)?.name||'',Dominio:d.name,'Peso %':d.weight}));
   return data;
 };
+
+
+/* A contextual heading appears only after the student selectors scroll away. */
+function updateGradingStickyHeader(){
+  const header=E('gradeStickyHeader'),selectors=E('gradeSelectors');
+  if(!header||!selectors)return;
+  const visible=view==='grades'&&selectors.getBoundingClientRect().bottom<=0;
+  const main=document.querySelector('.main');
+  if(main)header.style.setProperty('--grade-sticky-left',Math.max(0,main.getBoundingClientRect().left)+'px');
+  header.classList.toggle('visible',visible);
+  header.setAttribute('aria-hidden',String(!visible));
+}
+window.addEventListener('scroll',updateGradingStickyHeader,{passive:true});
+window.addEventListener('resize',updateGradingStickyHeader);
+const renderBeforeSticky=render;
+render=function(){renderBeforeSticky();updateGradingStickyHeader()};
