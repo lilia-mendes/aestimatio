@@ -194,3 +194,73 @@ gradesPage=function(){
   return '<div class="individual-grading">'+selectors+'<div class="flex between"><h2>'+esc(a.name)+'</h2><span class="chip">'+esc(a.type)+'</span></div>'+rows+'<div id="individualSummary">'+individualSummary(a,s)+'</div><div class="flex between"><button class="btn" onclick="navigateStudent(-1)">← Aluno anterior</button><button class="btn primary" onclick="navigateStudent(1)">Aluno seguinte →</button></div></div>';
 };
 function navigateStudent(step){const ss=students(),i=ss.findIndex(s=>s.id===AEST.selectedStudent);AEST.selectedStudent=ss[Math.max(0,Math.min(ss.length-1,i+step))]?.id||'';render()}
+
+/* Immutable signed star movements and responsive layout. */
+addStar=function(id){
+  if(!periodId)return;
+  db.stars.push({id:uid(),classId,periodId,studentId:id,count:1,action:'adicionada',createdAt:new Date().toISOString()});
+  save();render();markStarFeedback(id,'add');
+};
+undoStar=function(id){
+  if(!periodId||starCount(id,periodId)<=0)return;
+  db.stars.push({id:uid(),classId,periodId,studentId:id,count:-1,action:'removida',createdAt:new Date().toISOString()});
+  save();render();markStarFeedback(id,'remove');
+};
+removeStar=function(id){
+  const log=db.stars.find(e=>e.id===id);
+  if(!log||!confirm('Registar um movimento inverso, sem apagar o histórico?'))return;
+  if(Number(log.count)>0&&starCount(log.studentId,log.periodId)<=0){toast('Não é possível ficar com estrelas negativas.',true);return}
+  db.stars.push({id:uid(),classId:log.classId,periodId:log.periodId,studentId:log.studentId,count:-Number(log.count||1),action:'correcao',createdAt:new Date().toISOString(),reverts:id});
+  save();render();
+};
+function markStarFeedback(id,kind){
+  const row=[...document.querySelectorAll('.star-student')].find(n=>n.dataset.student===id);
+  if(!row)return;
+  row.classList.add(kind==='add'?'flash-add':'flash-remove');
+  setTimeout(()=>row.classList.remove('flash-add','flash-remove'),1100);
+}
+starsPage=function(){
+  if(!classId)return '<section class="panel empty">Seleciona uma turma.</section>';
+  const p=by('periods',periodId),max=Number(db.settings.starMax)||25,starSvg='<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 2l3 6.4 7 1-5 5 .9 7L12 18l-5.9 3.4 1-7-5-5 7-1z"/></svg>';
+  const cards=students().map(s=>{
+    const count=starCount(s.id,periodId),pct=Math.min(100,Math.max(0,100*count/max));
+    return '<div class="star-student" data-student="'+s.id+'"><div class="star-line"><strong class="star-name">'+esc(s.name)+'</strong><span class="star-number">★ '+count+'</span><span class="star-bonus">+'+AEST.fmt20(bonus(s.id,periodId))+'</span><div class="star-buttons"><button class="star-action star-plus" title="Adicionar estrela" aria-label="Adicionar estrela a '+esc(s.name)+'" onclick="addStar(\''+s.id+'\')">'+starSvg+'<b>+</b></button><button class="star-action star-minus" title="Remover estrela" aria-label="Remover estrela a '+esc(s.name)+'" '+(count<=0?'disabled':'')+' onclick="undoStar(\''+s.id+'\')">'+starSvg+'<b>−</b></button></div></div><div class="star-track" role="progressbar" aria-valuemin="0" aria-valuemax="'+max+'" aria-valuenow="'+Math.min(max,count)+'" aria-label="Progresso de '+esc(s.name)+'"><span style="width:'+pct+'%"></span></div></div>';
+  }).join('');
+  const logs=db.stars.filter(e=>e.classId===classId&&e.periodId===periodId).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,150);
+  const history=logs.map(l=>'<div class="star-history-row"><span>'+esc(new Date(l.createdAt).toLocaleString('pt-PT'))+'</span><strong>'+esc(by('students',l.studentId)?.name||'Aluno removido')+'</strong><span class="'+(Number(l.count)>=0?'star-history-add':'star-history-remove')+'">'+(Number(l.count)>0?'★ +'+fmt(l.count):'★ '+fmt(l.count))+'</span></div>').join('');
+  return wrap('<section class="panel"><div class="flex between"><h2>Estrelas · '+esc(p?.name||'')+'</h2><span class="chip gold">Máximo '+max+' ★ · bónus até +'+AEST.fmt20(db.settings.starBonus)+'</span></div><p class="hint">Atribui ou retira estrelas. Todas as ações ficam registadas no histórico.</p><div class="star-rows">'+(cards||'<div class="empty">Sem alunos.</div>')+'</div></section><section class="panel" style="margin-top:16px"><h2>Histórico de movimentos</h2><div class="star-history">'+(history||'<div class="empty">Ainda sem movimentos.</div>')+'</div></section>');
+};
+/* Avoid repetitive Google consent; never persist credentials. */
+googleSignIn=function(){
+  const cid=db.settings.clientId;
+  if(!cid){toast('Configura primeiro o Client ID OAuth.',true);return}
+  if(!window.google?.accounts?.oauth2){toast('Autenticação Google ainda não disponível.',true);return}
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:cid,scope:SCOPES,
+    callback:async response=>{
+      if(response.error){
+        if(response.error==='interaction_required'||response.error==='consent_required'){
+          toast('A Google requer nova autorização.',true);tokenClient.requestAccessToken({prompt:'consent'});return;
+        }
+        toast('Não foi possível iniciar sessão: '+response.error,true);return;
+      }
+      googleToken=response.access_token;
+      try{localStorage.setItem('aestimatio_google_authorized_'+cid,'1')}catch(e){}
+      try{await ensureDriveFolder();toast('Google ligado.')}catch(e){toast('Google ligado, mas falhou a pesquisa da pasta: '+e.message,true)}
+      if(view==='settings')render();
+      await discoverDatabase();
+    }
+  });
+  let known=false;try{known=localStorage.getItem('aestimatio_google_authorized_'+cid)==='1'}catch(e){}
+  tokenClient.requestAccessToken({prompt:known?'':'consent'});
+};
+const originalApiGoogle=apiGoogle;
+apiGoogle=async function(url,options={}){
+  try{return await originalApiGoogle(url,options)}
+  catch(e){
+    if(/invalid credentials|401|authentication credential/i.test(e.message)){
+      googleToken='';toast('A ligação Google expirou. Usa «Iniciar sessão Google» para voltar a ligar.',true);
+    }
+    throw e;
+  }
+};
