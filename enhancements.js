@@ -264,3 +264,168 @@ apiGoogle=async function(url,options={}){
     throw e;
   }
 };
+
+/* Five reporting views: instrument, semester, student, class and global. */
+AEST.reportStudent='';
+AEST.reportMode='overall';
+AEST.reportDomain='all';
+AEST.reportDetail='domain';
+AEST.reportSeries={};
+AEST.reportOptions=function(list,selected){
+  return list.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===String(selected)?'selected':'')+'>'+esc(x.name)+'</option>').join('');
+};
+AEST.reportHeader=function(){
+  const cs=db.classes,ps=periods();
+  const ass=assessments(),ss=students();
+  if(!ss.some(s=>s.id===this.reportStudent))this.reportStudent=ss[0]?.id||'';
+  return '<div class="panel"><div class="filters report-filters"><div class="field"><label>Turma</label><select onchange="setClass(this.value)">'+this.reportOptions(cs.map(c=>({id:c.id,name:c.name})),classId)+'</select></div><div class="field"><label>Semestre / período</label><select onchange="setPeriod(this.value)">'+this.reportOptions(ps,periodId)+'</select></div>'+((this.reportTab==='instrument')?'<div class="field"><label>Instrumento de avaliação</label><select onchange="assessmentId=this.value;render()">'+this.reportOptions(ass,assessmentId)+'</select></div>':'')+((this.reportTab==='student')?'<div class="field"><label>Aluno</label><select onchange="AEST.reportStudent=this.value;render()">'+this.reportOptions(ss,this.reportStudent)+'</select></div>':'')+'</div></div>';
+};
+AEST.reportTabMenu=function(){
+  const tabs=[['instrument','Pauta · Instrumento'],['semester','Pauta · Semestre'],['student','Dashboard · Aluno'],['class','Dashboard · Turma'],['global','Dashboard · Global']];
+  return '<div class="report-tabs" role="tablist">'+tabs.map(t=>'<button class="btn '+(this.reportTab===t[0]?'primary':'')+'" role="tab" aria-selected="'+(this.reportTab===t[0])+'" onclick="AEST.reportTab=\''+t[0]+'\';AEST.reportSeries={};render()">'+t[1]+'</button>').join('')+'</div>';
+};
+AEST.reportTable=function(headers,rows){
+  const desktop='<div class="tablewrap report-table"><table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+  const mobile='<div class="report-card-list">'+rows.map(row=>'<div class="report-student-card"><strong>'+row[0]+'</strong>'+row.slice(1).map((cell,i)=>'<div class="report-card-line"><span>'+esc(headers[i+1])+'</span><span>'+cell+'</span></div>').join('')+'</div>').join('')+'</div>';
+  return desktop+mobile;
+};
+AEST.instrumentReport=function(){
+  const a=by('assessments',assessmentId);
+  if(!a)return '<section class="panel empty">Ainda não há instrumentos para este período.</section>';
+  const qs=questions(a.id),ds=this.domainsFor(classId),isDomain=this.reportDetail==='domain';
+  const switcher='<div class="field"><label>Detalhe da pauta</label><select onchange="AEST.reportDetail=this.value;render()"><option value="domain" '+(isDomain?'selected':'')+'>Por domínio</option><option value="question" '+(!isDomain?'selected':'')+'>Por pergunta / critério</option></select></div>';
+  const columns=isDomain?ds.map(d=>d.name):qs.map((q,i)=>(a.type==='Trabalho'?'Critério ':'Pergunta ')+(i+1));
+  const rows=students().map(s=>{
+    const details=isDomain?this.resultsByDomain(a,s.id).map(d=>this.fmt20(d.score20)):qs.map(q=>{const score=grade(a.id,s.id,q.id);return score===null?'—':fmt(score)+' / '+fmt(q.max)});
+    return [esc(s.name),...details,'<strong>'+this.fmt20(this.result(a,s.id)?.score20)+'</strong>'];
+  });
+  return '<section class="panel"><div class="flex between"><h2>Pauta · '+esc(a.name)+'</h2><button class="btn" onclick="exportExcel()">↓ Excel</button></div><div class="report-tools">'+switcher+'<span class="hint">Valores dos domínios em 0–20, com uma casa decimal. As perguntas mostram pontos e cotação.</span></div>'+this.reportTable(['Aluno',...columns,'Nota / 20'],rows)+'</section>';
+};
+AEST.semesterReport=function(){
+  const ass=assessments(),list=students(),weights=ass.reduce((n,a)=>n+Number(a.weight||0),0);
+  const headers=['Aluno',...ass.map(a=>a.name+' ('+(weights?this.fmt20(a.weight/weights*100):'0')+'%)'),'★ Bónus','Nota final / 20'];
+  const rows=list.map(s=>{
+    const r=this.periodResult(s.id,periodId);
+    return [esc(s.name),...ass.map(a=>this.fmt20(this.result(a,s.id)?.score20)),'+'+this.fmt20(bonus(s.id,periodId)),'<strong>'+this.fmt20(r?.total)+'</strong>'];
+  });
+  return '<section class="panel"><div class="flex between"><h2>Pauta final · '+esc(by('periods',periodId)?.name||'')+'</h2><button class="btn" onclick="exportExcel()">↓ Excel</button></div><p class="hint">Cada instrumento apresenta a nota e a ponderação no cabeçalho. O bónus das estrelas é aplicado à média ponderada, até ao limite de 20 valores.</p>'+this.reportTable(headers,rows)+'</section>';
+};
+AEST.currentDomainScores=function(s,p=periodId,cid=classId){
+  return this.domainsFor(cid).map(d=>({name:d.name,weight:d.weight,score:this.domainAssessmentAverage(s,p,d.name)}));
+};
+AEST.annotationList=function(s){
+  const ids=db.assessments.filter(a=>a.classId===classId).map(a=>a.id);
+  return db.grades.filter(g=>g.studentId===s&&g.note&&ids.includes(g.assessmentId)).sort((a,b)=>{
+    const dateA=by('assessments',a.assessmentId)?.date||'',dateB=by('assessments',b.assessmentId)?.date||'';
+    return dateB.localeCompare(dateA);
+  }).map(g=>({date:by('assessments',g.assessmentId)?.date||'',ass:by('assessments',g.assessmentId)?.name||'',question:by('questions',g.questionId)?.name||'',note:g.note}));
+};
+AEST.metrics=function(items){
+  return '<div class="report-metrics">'+items.map(i=>'<div class="panel report-metric"><div class="hint">'+esc(i.name)+'</div><strong>'+esc(i.value)+'</strong></div>').join('')+'</div>';
+};
+AEST.xyChart=function(series,title){
+  const allDates=[...new Set(series.flatMap(s=>s.points.map(p=>p.x)).filter(Boolean))].sort();
+  if(!allDates.length||!series.length)return '<div class="empty">Ainda não há avaliações suficientes para desenhar o gráfico.</div>';
+  const W=650,H=265,L=38,R=12,T=15,B=40,colors=['#2369d2','#159475','#d58b20','#914fc0','#dd556c','#475569','#17a4b7','#84624e'];
+  const xIndex=date=>allDates.indexOf(date),xPos=x=>L+(allDates.length>1?xIndex(x)/(allDates.length-1):.5)*(W-L-R),yPos=y=>T+(20-y)/20*(H-T-B);
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(title)+'" class="report-chart">';
+  for(let i=0;i<=4;i++){const v=i*5,y=yPos(v);svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" stroke="#dce4ef"/><text x="'+(L-8)+'" y="'+(y+4)+'" font-size="11" fill="#70829b" text-anchor="end">'+v+'</text>'}
+  allDates.forEach((date,i)=>{if(i%Math.max(1,Math.ceil(allDates.length/6))!==0&&i!==allDates.length-1)return;svg+='<text x="'+xPos(date)+'" y="'+(H-12)+'" font-size="10" fill="#70829b" text-anchor="middle">'+esc(date.length>10?date.slice(0,10):date)+'</text>'});
+  series.forEach((s,i)=>{
+    if(!s.show)return;
+    const c=s.color||colors[i%colors.length];
+    const segments=[];let seg=[];
+    for(const p of s.points){if(p.y===null||!Number.isFinite(p.y)){if(seg.length)segments.push(seg);seg=[]}else seg.push([xPos(p.x),yPos(Math.max(0,Math.min(20,p.y))),p])}
+    if(seg.length)segments.push(seg);
+    segments.forEach(points=>{
+      if(points.length>1)svg+='<polyline fill="none" stroke="'+c+'" stroke-width="'+(s.bold?3.5:2.5)+'" stroke-linejoin="round" points="'+points.map(pt=>pt[0]+','+pt[1]).join(' ')+'"/>';
+      points.forEach(pt=>svg+='<circle cx="'+pt[0]+'" cy="'+pt[1]+'" r="3.2" fill="'+c+'"><title>'+esc(s.name+': '+this.fmt20(pt[2].y)+' ('+pt[2].x+')')+'</title></circle>');
+    });
+  });
+  return svg+'</svg>';
+};
+AEST.seriesControls=function(series,key){
+  return '<div class="report-series">'+series.map((s,i)=>{
+    const k=key+':'+i,checked=this.reportSeries[k]!==false;
+    return '<label><input type="checkbox" '+(checked?'checked':'')+' onchange="AEST.reportSeries[\''+k+'\']=this.checked;render()"><span class="series-dot" style="background:'+(s.color||'#4686dd')+'"></span>'+esc(s.name)+'</label>';
+  }).join('')+'</div>';
+};
+AEST.chartPanel=function(title,series,key){
+  const enabled=series.map((s,i)=>({...s,show:this.reportSeries[key+':'+i]!==false}));
+  return '<section class="panel"><h3>'+esc(title)+'</h3><p class="hint">Clica nas legendas para mostrar ou ocultar séries.</p>'+this.seriesControls(series,key)+this.xyChart(enabled,title)+'</section>';
+};
+AEST.studentReport=function(){
+  const s=this.reportStudent,student=by('students',s);
+  if(!student)return '<div class="panel empty">Seleciona um aluno.</div>';
+  const pr=this.periodResult(s,periodId),domains=this.currentDomainScores(s);
+  const comps=assessments().map(a=>{
+    const r=this.result(a,s);return '<div class="report-component"><span>'+esc(a.name)+' <small>('+esc(a.type)+')</small></span><strong>'+this.fmt20(r?.score20)+'</strong><span class="hint">Peso '+fmt(a.weight)+'</span></div>';
+  }).join('');
+  const domainTable=this.reportTable(['Domínio','Peso','Nota / 20'],domains.map(d=>[esc(d.name),fmt(d.weight)+'%',this.fmt20(d.score)]));
+  const notes=this.annotationList(s);
+  const overall=[{name:'Nota global',points:this.timeSeries(classId,periodId,'all',s),color:'#2369d2',bold:true}];
+  const domainSeries=domains.map((d,i)=>({name:d.name,points:this.timeSeries(classId,periodId,d.name,s)}));
+  return this.metrics([{name:'Nota do semestre',value:this.fmt20(pr?.total)+' / 20'},{name:'Estrelas',value:starCount(s,periodId)+' ★'},{name:'Bónus',value:'+'+this.fmt20(bonus(s,periodId))}])+
+    '<section class="panel"><h3>Composição da nota · '+esc(student.name)+'</h3>'+comps+'<div class="report-component"><span>★ Estrelas</span><strong>+'+this.fmt20(bonus(s,periodId))+'</strong><span class="hint">Bónus</span></div></section>'+
+    '<section class="panel"><h3>Classificação atual por domínio</h3>'+domainTable+'</section>'+
+    this.chartPanel('Evolução da nota global',overall,'studentOverall')+
+    this.chartPanel('Evolução por domínio',domainSeries,'studentDomains')+
+    '<section class="panel"><h3>Anotações</h3>'+(notes.length?notes.map(n=>'<div class="report-note"><span class="hint">'+esc(n.date)+' · '+esc(n.ass)+'</span><strong>'+esc(n.question)+'</strong><p>'+esc(n.note)+'</p></div>').join(''):'<div class="empty">Ainda sem anotações.</div>')+'</section>';
+};
+AEST.regimePeriodFor=function(c,order){
+  return db.periods.find(p=>p.regimeId===c.regimeId&&Number(p.order)===Number(order))?.id||'';
+};
+AEST.globalTimeline=function(classes){
+  const order=by('periods',periodId)?.order||1;
+  return [...new Set(classes.flatMap(c=>{
+    const p=this.regimePeriodFor(c,order);
+    return db.assessments.filter(a=>a.classId===c.id&&a.periodId===p).map(a=>a.date).filter(Boolean);
+  }))].sort();
+};
+AEST.cumulative=function(s,period,domain,date){
+  const owner=by('students',s);
+  const ass=db.assessments.filter(a=>a.classId===owner?.classId&&a.periodId===period&&a.date&&a.date<=date);
+  const records=ass.map(a=>({a,v:domain==='all'?this.result(a,s)?.score20:this.resultsByDomain(a,s).find(d=>d.name===domain)?.score20})).filter(x=>x.v!==null&&x.v!==undefined&&Number(x.a.weight)>0);
+  const w=records.reduce((n,x)=>n+Number(x.a.weight),0);
+  return w?records.reduce((n,x)=>n+x.v*Number(x.a.weight),0)/w:null;
+};
+AEST.classCumulative=function(c,p,domain,date,ids){
+  const scores=(ids||db.students.filter(s=>s.classId===c.id).map(s=>s.id)).map(s=>this.cumulative(s,p,domain,date)).filter(x=>x!==null);
+  return scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null;
+};
+AEST.chartModeSwitcher=function(){
+  return '<div class="panel"><div class="report-tools"><div class="field"><label>Mostrar evolução</label><select onchange="AEST.reportMode=this.value;AEST.reportSeries={};render()"><option value="overall" '+(this.reportMode==='overall'?'selected':'')+'>Nota global</option><option value="domains" '+(this.reportMode==='domains'?'selected':'')+'>Por domínio</option></select></div></div></div>';
+};
+AEST.classReport=function(){
+  const c=by('classes',classId),ass=assessments(),dates=[...new Set(ass.map(a=>a.date).filter(Boolean))].sort(),ss=students(),ds=this.domainsFor(classId),mode=this.reportMode;
+  if(!c)return '<div class="panel empty">Seleciona uma turma.</div>';
+  const series=mode==='overall'?ss.map((s,i)=>({name:s.name,points:dates.map(date=>({x:date,y:this.cumulative(s.id,periodId,'all',date)}))})):ds.map((d,i)=>({name:d.name,points:dates.map(date=>({x:date,y:this.classCumulative(c,periodId,d.name,date)}))}));
+  return this.chartModeSwitcher()+this.metrics([{name:'Média da turma',value:this.fmt20(this.classCumulative(c,periodId,'all',dates.at(-1)||''))+' / 20'},{name:'Alunos',value:String(ss.length)},{name:'Domínios',value:String(ds.length)}])+this.chartPanel(mode==='overall'?'Evolução das notas por aluno':'Evolução das médias por domínio · '+c.name,series,'class'+mode);
+};
+AEST.globalReport=function(){
+  const cs=db.classes,dates=this.globalTimeline(cs),order=by('periods',periodId)?.order||1,domainNames=[...new Set(cs.flatMap(c=>this.domainsFor(c.id).map(d=>d.name)))];
+  const domains=this.reportMode==='domains';
+  const filter='<div class="panel"><div class="report-tools"><div class="field"><label>Mostrar evolução</label><select onchange="AEST.reportMode=this.value;AEST.reportSeries={};render()"><option value="overall" '+(!domains?'selected':'')+'>Média global das turmas</option><option value="domains" '+(domains?'selected':'')+'>Por domínio</option></select></div>'+(domains?'<div class="field"><label>Domínio</label><select onchange="AEST.reportDomain=this.value;AEST.reportSeries={};render()"><option value="all">Todos os domínios</option>'+domainNames.map(d=>'<option value="'+esc(d)+'" '+(d===this.reportDomain?'selected':'')+'>'+esc(d)+'</option>').join('')+'</select></div>':'')+'</div></div>';
+  const classMean=(c,d,date)=>this.classCumulative(c,this.regimePeriodFor(c,order),d,date);
+  let series;
+  if(domains&&this.reportDomain==='all'){
+    series=domainNames.map(d=>({name:d,points:dates.map(date=>({x:date,y:this.globalMean(cs,order,d,date)}))}));
+  }else{
+    const domain=domains?this.reportDomain:'all';
+    series=cs.map(c=>({name:c.name,points:dates.map(date=>({x:date,y:classMean(c,domain,date)}))}));
+    series.push({name:domains?'Média global · '+domain:'Média global',points:dates.map(date=>({x:date,y:this.globalMean(cs,order,domain,date)})),bold:true,color:'#1d3355'});
+  }
+  return filter+this.metrics([{name:'Média global',value:this.fmt20(this.globalMean(cs,order,domains&&this.reportDomain!=='all'?this.reportDomain:'all',dates.at(-1)||''))+' / 20'},{name:'Turmas',value:String(cs.length)},{name:'Domínios',value:String(domainNames.length)}])+this.chartPanel(domains?'Evolução das médias por domínio':'Evolução das médias das turmas',series,'global'+this.reportMode+this.reportDomain);
+};
+AEST.globalMean=function(cs,order,domain,date){
+  const vals=cs.flatMap(c=>{
+    const p=this.regimePeriodFor(c,order);
+    return db.students.filter(s=>s.classId===c.id).map(s=>this.cumulative(s.id,p,domain,date)).filter(x=>x!==null);
+  });
+  return vals.length?vals.reduce((n,x)=>n+x,0)/vals.length:null;
+};
+reportsPage=function(){
+  if(!db.classes.length)return '<div class="panel empty">Cria uma turma.</div>';
+  const panes={instrument:()=>AEST.instrumentReport(),semester:()=>AEST.semesterReport(),student:()=>AEST.studentReport(),class:()=>AEST.classReport(),global:()=>AEST.globalReport()};
+  return '<div class="reporting">'+AEST.reportTabMenu()+AEST.reportHeader()+panes[AEST.reportTab]()+'</div>';
+};
