@@ -135,6 +135,9 @@ editAssessment=function(id=''){
   AEST.domainsFor(classId);
   const a=by('assessments',id)||{};
   draftQuestions=id?questions(id).map(x=>({...x})):[];
+  // Compatibilidade: os Trabalhos antigos usavam pesos com soma 100.
+  // A conversao na edicao duplica os pesos, mantendo a mesma nota ponderada.
+  if(a.type==='Trabalho'&&draftQuestions.length){const sum=draftQuestions.reduce((n,q)=>n+Number(q.criterionWeight||0),0);if(Math.abs(sum-100)<0.001)draftQuestions.forEach(q=>q.criterionWeight=Number(q.criterionWeight||0)*2)}
   const types=['Teste','Questão de aula','Trabalho'];
   const select='<div class="field"><label>Tipo</label><select name="type" onchange="refreshQuestionType()">'+types.map(type=>'<option '+((a.type||'Teste')===type?'selected':'')+'>'+type+'</option>').join('')+'</select></div>';
   openModal(id?'Editar avaliação':'Nova avaliação','<div class="formgrid">'+field('Nome','name',a.name||'')+select+field('Data','date',a.date||new Date().toISOString().slice(0,10),'date')+field('Peso relativo no período','weight',a.weight??1,'number','min="0" step="0.01"')+'<div class="full">'+field('Google Docs · ID (opcional)','docId',a.docId||'')+'</div></div><div class="divider"></div><div class="flex between"><h3>Perguntas / critérios</h3><div class="flex">'+((a.type||'Teste')==='Trabalho'?'':'<button type="button" class="btn small" onclick="closeModal();editDomains()">Configurar domínios</button>')+'<button type="button" class="btn small" onclick="copyCriteriaFromWork()">Reutilizar critérios</button><button type="button" class="btn small" onclick="addQuestion()">+ Adicionar</button></div></div><div id="questionEditor">'+questionRows()+'</div><p class="hint">Testes e questões de aula: perguntas associadas a domínios (200 pontos). Trabalhos: critérios sem domínios, classificados de 0 a 200, com pesos que totalizam 200 pontos. O Trabalho conta para a nota global, não para as estatísticas por domínio.</p>',f=>{
@@ -519,7 +522,8 @@ function copyCriteriaFromWork(){
   if(!Number.isInteger(index)||!options[index]){toast('Escolha inválida.',true);return}
   captureQuestions();
   if(draftQuestions.length&&!confirm('Substituir os critérios que estão a ser editados pelos do trabalho selecionado?'))return;
-  draftQuestions=questions(options[index].id).map((q,i)=>({id:uid(),name:q.name,max:200,criterionWeight:Number(q.criterionWeight||0),order:i+1}));
+  const origin=questions(options[index].id),sum=origin.reduce((n,q)=>n+Number(q.criterionWeight||0),0),factor=Math.abs(sum-100)<0.001?2:1;
+  draftQuestions=origin.map((q,i)=>({id:uid(),name:q.name,max:200,criterionWeight:Number(q.criterionWeight||0)*factor,order:i+1}));
   E('questionEditor').innerHTML=questionRows();
   toast('Critérios e ponderações reutilizados. Confirma e guarda o trabalho.');
 }
