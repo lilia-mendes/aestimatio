@@ -44,7 +44,11 @@ const AESTSYNC={
     const out={settings:{}};const conflicts=[];
     const pick=(b,l,r,label)=>{
       if(this.eq(l,r))return l;
-      if(this.eq(b,l))return r;
+      if(this.eq(b,l)){
+        if(b&&r===undefined){conflicts.push(label+' (remoção remota)');return l}
+        if(b&&r&&r._parentRevision&&r._parentRevision!==(b._revision||'legacy')){conflicts.push(label+' (edição concorrente)');return l}
+        return r;
+      }
       if(this.eq(b,r))return l;
       conflicts.push(label);return l;
     };
@@ -93,6 +97,7 @@ const AESTSYNC={
   },
   async sync(){
     if(this.busy||!googleToken||!db.settings.spreadsheetId)return;
+    if(E('modal')?.open||document.activeElement?.matches?.('input,textarea,[contenteditable="true"]'))return;
     if(typeof navigator!=='undefined'&&navigator.onLine===false){this.setStatus('Sem ligação à Internet');return}
     const baseline=this.getBase();
     if(!baseline){this.setStatus('Sincronização inicial pendente: importa ou envia os dados uma vez.');return}
@@ -133,7 +138,27 @@ const AESTSYNC={
   }
 };
 const standardSave=save;
+function aestStampRevisions(){
+  let previous={};
+  try{previous=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){}
+  for(const key of AESTSYNC.keys()){
+    const old=new Map((previous[key]||[]).map(x=>[x.id,x]));
+    for(const record of db[key]||[]){
+      const before=old.get(record.id);
+      if(!before){
+        if(!record._revision){record._revision=uid();record._parentRevision=null}
+        continue;
+      }
+      const normalized=x=>{const v={...x};delete v._revision;delete v._parentRevision;return JSON.stringify(v)};
+      if(normalized(before)!==normalized(record)){
+        record._parentRevision=before._revision||'legacy';
+        record._revision=uid();
+      }else if(!record._revision&&before._revision){record._revision=before._revision;record._parentRevision=before._parentRevision||null}
+    }
+  }
+}
 save=function(){
+  if(!AESTSYNC.suspendRevision)aestStampRevisions();
   standardSave();AESTSYNC.schedule();
 };
 const standardPushSheets=pushSheets;
@@ -143,7 +168,8 @@ pushSheets=async function(){
 };
 const standardPullSheets=pullSheets;
 pullSheets=async function(auto=false){
-  await standardPullSheets(auto);
+  AESTSYNC.suspendRevision=true;
+  try{await standardPullSheets(auto)}finally{AESTSYNC.suspendRevision=false}
   await AESTSYNC.setBaselineIfEqual();
 };
 const standardDiscoverDatabase=discoverDatabase;
