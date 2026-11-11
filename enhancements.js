@@ -9,7 +9,7 @@ const AEST={
     if(!cid)return [];
     let list=db.domainConfigs.filter(d=>d.classId===cid);
     if(!list.length){
-      const legacy=[...new Set(db.questions.filter(q=>db.assessments.some(a=>a.id===q.assessmentId&&a.classId===cid)).map(q=>q.domain).filter(Boolean))];
+      const legacy=[...new Set(db.questions.filter(q=>db.assessments.some(a=>a.id===q.assessmentId&&a.classId===cid&&a.type!=='Trabalho')).map(q=>q.domain).filter(Boolean))];
       const standard={'Tratamento de Fontes':20,'Compreensão Histórica':60,'Comunicação em História':20};
       const base=!legacy.length||legacy.every(name=>Object.prototype.hasOwnProperty.call(standard,name))?Object.keys(standard):legacy;
       base.forEach((name,i)=>db.domainConfigs.push({id:uid(),classId:cid,name,weight:standard[name]??(100/base.length)}));
@@ -20,6 +20,8 @@ const AEST={
   domName(q){return q.domain||'Sem domínio'},
   domains(cid){return this.domainsFor(cid).map(x=>x.name)},
   resultsByDomain(a,s){
+    // Trabalhos integram a nota global, sem alimentar os dominios.
+    if(a?.type==='Trabalho')return [];
     const ds=this.domainsFor(a.classId),qs=questions(a.id);
     return ds.map(d=>{
       const subset=qs.filter(q=>q.domain===d.name||q.domain===d.id),max=subset.reduce((sum,q)=>sum+Number(q.max||0),0);
@@ -62,13 +64,13 @@ const AEST={
     return {base,bonus:star,total:Math.min(20,base+star),count:arr.length};
   },
   domainAssessmentAverage(s,p,name){
-    const owner=by('students',s),list=db.assessments.filter(a=>a.periodId===p&&a.classId===owner?.classId);
+    const owner=by('students',s),list=db.assessments.filter(a=>a.periodId===p&&a.classId===owner?.classId&&a.type!=='Trabalho');
     const entries=list.map(a=>({a,d:this.resultsByDomain(a,s).find(d=>d.name===name)})).filter(x=>x.d&&x.d.score20!==null&&Number(x.a.weight)>0);
     const w=entries.reduce((n,x)=>n+Number(x.a.weight),0);
     return w?entries.reduce((n,x)=>n+x.d.score20*Number(x.a.weight),0)/w:null;
   },
   timeSeries(cid,p,name,studentId=''){
-    const ass=db.assessments.filter(a=>a.classId===cid&&a.periodId===p).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    const ass=db.assessments.filter(a=>a.classId===cid&&a.periodId===p&&(name==='all'||a.type!=='Trabalho')).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
     const ids=studentId?[studentId]:db.students.filter(s=>s.classId===cid).map(s=>s.id);
     return ass.map((a,i)=>{
       const prior=ass.slice(0,i+1);
@@ -295,8 +297,8 @@ AEST.reportTable=function(headers,rows){
 AEST.instrumentReport=function(){
   const a=by('assessments',assessmentId);
   if(!a)return '<section class="panel empty">Ainda não há instrumentos para este período.</section>';
-  const qs=questions(a.id),ds=this.domainsFor(classId),isDomain=this.reportDetail==='domain';
-  const switcher='<div class="field"><label>Detalhe da pauta</label><select onchange="AEST.reportDetail=this.value;render()"><option value="domain" '+(isDomain?'selected':'')+'>Por domínio</option><option value="question" '+(!isDomain?'selected':'')+'>Por pergunta / critério</option></select></div>';
+  const qs=questions(a.id),isWork=a.type==='Trabalho',ds=isWork?[]:this.domainsFor(classId),isDomain=!isWork&&this.reportDetail==='domain';
+  const switcher=isWork?'<p class="hint">Os Trabalhos são avaliados apenas por critérios, sem associação a domínios.</p>':'<div class="field"><label>Detalhe da pauta</label><select onchange="AEST.reportDetail=this.value;render()"><option value="domain" '+(isDomain?'selected':'')+'>Por domínio</option><option value="question" '+(!isDomain?'selected':'')+'>Por pergunta / critério</option></select></div>';
   const columns=isDomain?ds.map(d=>d.name+' ('+fmt(d.weight)+'%)'):qs.map((q,i)=>(a.type==='Trabalho'?'Critério ':'Pergunta ')+(i+1));
   const rows=students().map(s=>{
     const details=isDomain?this.resultsByDomain(a,s.id).map(d=>this.fmt20(d.score20)):qs.map(q=>{const score=grade(a.id,s.id,q.id);return score===null?'—':fmt(score)+' / '+fmt(q.max)});
@@ -372,7 +374,7 @@ AEST.studentReport=function(){
   const domainSeries=domains.map((d,i)=>({name:d.name,points:this.timeSeries(classId,periodId,d.name,s)}));
   return this.metrics([{name:'Nota do semestre',value:this.fmt20(pr?.total)+' / 20'},{name:'Estrelas',value:starCount(s,periodId)+' ★'},{name:'Bónus',value:'+'+this.fmt20(bonus(s,periodId))}])+
     '<section class="panel"><h3>Composição da nota · '+esc(student.name)+'</h3>'+comps+'<div class="report-component"><span>★ Estrelas</span><strong>+'+this.fmt20(bonus(s,periodId))+'</strong><span class="hint">Bónus</span></div></section>'+
-    '<section class="panel"><h3>Classificação atual por domínio</h3>'+domainTable+'</section>'+
+    '<section class="panel"><h3>Classificação atual por domínio</h3><p class="hint">Calculada apenas com Testes e Questões de Aula; os Trabalhos integram a nota global, mas não estas médias.</p>'+domainTable+'</section>'+
     this.chartPanel('Evolução da nota global',overall,'studentOverall')+
     this.chartPanel('Evolução por domínio',domainSeries,'studentDomains')+
     '<section class="panel"><h3>Anotações</h3>'+(notes.length?notes.map(n=>'<div class="report-note"><span class="hint">'+esc(n.date)+' · '+esc(n.ass)+'</span><strong>'+esc(n.question)+'</strong><p>'+esc(n.note)+'</p></div>').join(''):'<div class="empty">Ainda sem anotações.</div>')+'</section>';
@@ -384,12 +386,12 @@ AEST.globalTimeline=function(classes){
   const order=by('periods',periodId)?.order||1;
   return [...new Set(classes.flatMap(c=>{
     const p=this.regimePeriodFor(c,order);
-    return db.assessments.filter(a=>a.classId===c.id&&a.periodId===p).map(a=>a.date).filter(Boolean);
+    return db.assessments.filter(a=>a.classId===c.id&&a.periodId===p&&(this.reportMode!=='domains'||a.type!=='Trabalho')).map(a=>a.date).filter(Boolean);
   }))].sort();
 };
 AEST.cumulative=function(s,period,domain,date){
   const owner=by('students',s);
-  const ass=db.assessments.filter(a=>a.classId===owner?.classId&&a.periodId===period&&a.date&&a.date<=date);
+  const ass=db.assessments.filter(a=>a.classId===owner?.classId&&a.periodId===period&&a.date&&a.date<=date&&(domain==='all'||a.type!=='Trabalho'));
   const records=ass.map(a=>({a,v:domain==='all'?this.result(a,s)?.score20:this.resultsByDomain(a,s).find(d=>d.name===domain)?.score20})).filter(x=>x.v!==null&&x.v!==undefined&&Number(x.a.weight)>0);
   const w=records.reduce((n,x)=>n+Number(x.a.weight),0);
   return w?records.reduce((n,x)=>n+x.v*Number(x.a.weight),0)/w:null;
@@ -402,7 +404,7 @@ AEST.chartModeSwitcher=function(){
   return '<div class="panel"><div class="report-tools"><div class="field"><label>Mostrar evolução</label><select onchange="AEST.reportMode=this.value;AEST.reportSeries={};render()"><option value="overall" '+(this.reportMode==='overall'?'selected':'')+'>Nota global</option><option value="domains" '+(this.reportMode==='domains'?'selected':'')+'>Por domínio</option></select></div></div></div>';
 };
 AEST.classReport=function(){
-  const c=by('classes',classId),ass=assessments(),dates=[...new Set(ass.map(a=>a.date).filter(Boolean))].sort(),ss=students(),ds=this.domainsFor(classId),mode=this.reportMode;
+  const c=by('classes',classId),ass=assessments(),mode=this.reportMode,dates=[...new Set(ass.filter(a=>mode==='overall'||a.type!=='Trabalho').map(a=>a.date).filter(Boolean))].sort(),ss=students(),ds=this.domainsFor(classId);
   if(!c)return '<div class="panel empty">Seleciona uma turma.</div>';
   const series=mode==='overall'?ss.map((s,i)=>({name:s.name,points:dates.map(date=>({x:date,y:this.cumulative(s.id,periodId,'all',date)}))})):ds.map((d,i)=>({name:d.name,points:dates.map(date=>({x:date,y:this.classCumulative(c,periodId,d.name,date)}))}));
   return this.chartModeSwitcher()+this.metrics([{name:'Média da turma',value:this.fmt20(this.classCumulative(c,periodId,'all',dates.at(-1)||''))+' / 20'},{name:'Alunos',value:String(ss.length)},{name:'Domínios',value:String(ds.length)}])+this.chartPanel(mode==='overall'?'Evolução das notas por aluno':'Evolução das médias por domínio · '+c.name,series,'class'+mode);
@@ -512,8 +514,7 @@ function copyCriteriaFromWork(){
   if(!Number.isInteger(index)||!options[index]){toast('Escolha inválida.',true);return}
   captureQuestions();
   if(draftQuestions.length&&!confirm('Substituir os critérios que estão a ser editados pelos do trabalho selecionado?'))return;
-  const valid=AEST.domainsFor(classId).map(d=>d.name);
-  draftQuestions=questions(options[index].id).map((q,i)=>({...q,id:uid(),assessmentId:undefined,domain:valid.includes(q.domain)?q.domain:valid[0],order:i+1}));
+  draftQuestions=questions(options[index].id).map((q,i)=>({id:uid(),name:q.name,max:200,criterionWeight:Number(q.criterionWeight||0),order:i+1}));
   E('questionEditor').innerHTML=questionRows();
   toast('Critérios e ponderações reutilizados. Confirma e guarda o trabalho.');
 }
