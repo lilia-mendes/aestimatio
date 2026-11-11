@@ -513,3 +513,38 @@ function copyCriteriaFromWork(){
   E('questionEditor').innerHTML=questionRows();
   toast('Critérios e ponderações reutilizados. Confirma e guarda o trabalho.');
 }
+
+/* Excel reports: consistent domain scale, criterion weights, notes and star movements. */
+const oldExcelSheets=excelSheets;
+excelSheets=function(){
+  const data=oldExcelSheets();
+  const domRows=[],questionRowsExcel=[],starRows=[],weightedRows=[];
+  for(const a of db.assessments){
+    const studentsInClass=db.students.filter(s=>s.classId===a.classId);
+    const qs=questions(a.id);
+    const name=by('classes',a.classId)?.name||'';
+    const period=by('periods',a.periodId)?.name||'';
+    for(const s of studentsInClass){
+      for(const d of AEST.resultsByDomain(a,s.id)){
+        if(!d.criteriaCount)continue;
+        domRows.push({Turma:name,Periodo:period,Avaliacao:a.name,Aluno:s.name,Dominio:d.name,'Peso dominio %':d.weight,'Pontos obtidos':d.earned,'Cotacao dominio':d.max,'Nota dominio /20':d.score20??''});
+      }
+      for(const q of qs){
+        const g=db.grades.find(g=>g.assessmentId===a.id&&g.studentId===s.id&&g.questionId===q.id);
+        questionRowsExcel.push({Turma:name,Periodo:period,Aluno:s.name,Avaliacao:a.name,Tipo:a.type,'Pergunta / criterio':q.name,Dominio:q.domain,'Cotacao':q.max,'Peso do criterio %':q.criterionWeight??'','Pontos obtidos':g?.score??'','Anotacao':g?.note||''});
+      }
+    }
+    if(a.type==='Trabalho'){
+      for(const q of qs)weightedRows.push({Turma:name,Periodo:period,Trabalho:a.name,Criterio:q.name,Dominio:q.domain,'Peso %':q.criterionWeight??0,'Nota maxima':200});
+    }
+  }
+  for(const entry of db.stars){
+    starRows.push({Turma:by('classes',entry.classId)?.name||'',Periodo:by('periods',entry.periodId)?.name||'',Aluno:by('students',entry.studentId)?.name||'',Data:entry.createdAt,Movimento:Number(entry.count)>0?'Adicionada':'Removida',Quantidade:entry.count});
+  }
+  data.Dominios=domRows;
+  data['Perguntas e notas']=questionRowsExcel;
+  data['Criterios dos trabalhos']=weightedRows;
+  data['Historico de estrelas']=starRows;
+  data['Dominios configurados']=db.domainConfigs.map(d=>({Turma:by('classes',d.classId)?.name||'',Dominio:d.name,'Peso %':d.weight}));
+  return data;
+};
