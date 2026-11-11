@@ -26,7 +26,7 @@ const AESTSYNC={
     const id=db.settings.spreadsheetId;
     if(!id||!googleToken)throw Error('Liga primeiro a conta Google e seleciona a base.');
     const base='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
-    const info=await apiGoogle(base+'?fields=sheets.properties(title)');
+    const info=await apiGoogle(base+'?fields=sheets.properties');
     const present=new Set((info.sheets||[]).map(s=>s.properties.title));
     const names=['Atlas_Config',...Object.values(TABNAMES).filter(t=>present.has(t))];
     const url=base+'/values:batchGet?'+names.map(n=>'ranges='+encodeURIComponent("'"+n+"'!A1:B10000")).join('&');
@@ -78,7 +78,7 @@ const AESTSYNC={
     const id=db.settings.spreadsheetId;
     await ensureTabs(id);
     const base='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
-    const info=await apiGoogle(base+'?fields=sheets.properties(sheetId,title,gridProperties.rowCount)');
+    const info=await apiGoogle(base+'?fields=sheets.properties');
     const specs=[];
     const cfgRows=[['key','json'],['settings',JSON.stringify(data.settings)]];
     specs.push({name:'Atlas_Config',values:cfgRows});
@@ -133,6 +133,8 @@ const AESTSYNC={
       const remote=await this.fetchCloud(),local=this.snapshot();
       if(this.eq(remote,local)){
         this.setBase(local);this.setStatus('Sincronização automática ativada');
+      }else if(this.keys().every(k=>k==='domainConfigs'||this.eq(remote[k],local[k]))&&this.eq(remote.settings,local.settings)&&!(remote.domainConfigs||[]).length){
+        this.setBase(remote);this.setStatus('A atualizar a lista de domínios na base remota…');this.schedule();
       }else this.setStatus('Dados locais e do Drive diferentes. Escolhe Enviar ou Importar antes de ativar sincronização automática.');
     }catch(e){this.setStatus('Por sincronizar · '+e.message)}
   }
@@ -163,6 +165,7 @@ save=function(){
 };
 const standardPushSheets=pushSheets;
 pushSheets=async function(){
+  aestStampRevisions();
   await standardPushSheets();
   await AESTSYNC.setBaselineIfEqual();
 };
