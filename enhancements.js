@@ -22,11 +22,12 @@ const AEST={
     const ds=this.domainsFor(a.classId),qs=questions(a.id);
     return ds.map(d=>{
       const subset=qs.filter(q=>q.domain===d.name||q.domain===d.id),max=subset.reduce((sum,q)=>sum+Number(q.max||0),0);
+      const complete=subset.length>0&&subset.every(q=>grade(a.id,s,q.id)!==null);
       const has=subset.some(q=>grade(a.id,s,q.id)!==null);
       const earned=subset.reduce((sum,q)=>sum+Number(grade(a.id,s,q.id)??0),0);
       const tw=subset.reduce((sum,q)=>sum+Number(q.criterionWeight||0),0);
       const weighted=subset.reduce((sum,q)=>sum+Number(grade(a.id,s,q.id)??0)*Number(q.criterionWeight||0),0);
-      const score20=!has?null:a.type==='Trabalho'&&tw>0?weighted/tw/10:max>0?earned/max*20:null;
+      const score20=!complete?null:a.type==='Trabalho'&&tw>0?weighted/tw/10:max>0?earned/max*20:null;
       return {name:d.name,weight:Number(d.weight)||0,earned,max,score20,has,criteriaCount:subset.length};
     });
   },
@@ -46,13 +47,13 @@ const AEST={
       const used=domains.reduce((n,d)=>n+d.weight,0);
       score20=used>0?domains.reduce((n,d)=>n+d.score20*d.weight,0)/used:total>0?earned/total*20:0;
     }
-    return {earned,total,score200:score20*10,score20,raw20:total>0?earned/total*20:null,filled:vals.filter(v=>v!==null).length,full};
+    return {earned,total,score200:full?score20*10:null,score20:full?score20:null,provisional20:score20,raw20:full&&total>0?earned/total*20:null,filled:vals.filter(v=>v!==null).length,full};
   },
   fmt20(v){return v===null||v===undefined||!Number.isFinite(Number(v))?'—':Number(v).toLocaleString('pt-PT',{minimumFractionDigits:1,maximumFractionDigits:1})},
   escAttr(v){return esc(v)},
   periodResult(s,p){
     const owner=by('students',s);
-    const arr=db.assessments.filter(a=>a.classId===owner?.classId&&a.periodId===p).map(a=>({a,r:this.result(a,s)})).filter(x=>x.r&&Number(x.a.weight)>0);
+    const arr=db.assessments.filter(a=>a.classId===owner?.classId&&a.periodId===p).map(a=>({a,r:this.result(a,s)})).filter(x=>x.r&&x.r.score20!==null&&Number(x.a.weight)>0);
     if(!arr.length)return null;
     const totalWeight=arr.reduce((n,x)=>n+Number(x.a.weight),0);
     const base=arr.reduce((n,x)=>n+x.r.score20*Number(x.a.weight),0)/totalWeight;
@@ -174,7 +175,7 @@ function updateIndividualSummary(){
 }
 function individualSummary(a,s){
   const r=AEST.result(a,s),ds=AEST.resultsByDomain(a,s);
-  return '<div class="layout"><div class="panel span6 stat"><label>Pontos obtidos</label><strong>'+(r?AEST.fmt20(r.earned)+' / '+fmt(r.total):'—')+'</strong></div><div class="panel span6 stat"><label>Nota</label><strong>'+(r?AEST.fmt20(r.score20)+' / 20':'—')+'</strong></div></div><section class="panel"><h3>Classificação por domínio</h3><div class="tablewrap"><table><thead><tr><th>Domínio</th><th>Peso</th><th>Pontos / cotação</th><th>Nota / 20</th></tr></thead><tbody>'+ds.map(d=>'<tr><td>'+esc(d.name)+'</td><td>'+fmt(d.weight)+'%</td><td>'+AEST.fmt20(d.earned)+' / '+fmt(d.max)+'</td><td><strong>'+AEST.fmt20(d.score20)+'</strong></td></tr>').join('')+'</tbody></table></div></section>';
+  return '<div class="layout"><div class="panel span6 stat"><label>Pontos obtidos</label><strong>'+(r?AEST.fmt20(r.earned)+' / '+fmt(r.total):'—')+'</strong></div><div class="panel span6 stat"><label>'+(r&&!r.full?'Nota provisória':'Nota')+'</label><strong>'+(r?AEST.fmt20(r.full?r.score20:r.provisional20)+' / 20':'—')+'</strong></div></div><section class="panel"><h3>Classificação por domínio</h3><div class="tablewrap"><table><thead><tr><th>Domínio</th><th>Peso</th><th>Pontos / cotação</th><th>Nota / 20</th></tr></thead><tbody>'+ds.map(d=>'<tr><td>'+esc(d.name)+'</td><td>'+fmt(d.weight)+'%</td><td>'+AEST.fmt20(d.earned)+' / '+fmt(d.max)+'</td><td><strong>'+AEST.fmt20(d.score20)+'</strong></td></tr>').join('')+'</tbody></table></div></section>';
 }
 function individualClassSelect(type){
   const options=db.classes.map(c=>'<option value="'+esc(c.id)+'" '+(c.id===classId?'selected':'')+'>'+esc(c.name)+'</option>').join('');
