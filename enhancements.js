@@ -1,5 +1,6 @@
 'use strict';
 /* Aestimatio v3: domains, work criteria and individual grading. */
+try{if(!localStorage.getItem('atlas_backup_before_v3')){const previous=localStorage.getItem(STORE);if(previous)localStorage.setItem('atlas_backup_before_v3',previous)}}catch(e){console.warn('Não foi possível criar cópia local anterior à versão 3',e)}
 const AEST={
   selectedStudent:'',reportTab:'instrument',reportDetail:'domain',reportDomain:'all',
   reportSeries:{},flashStudent:'',flashKind:'',flashUntil:0,
