@@ -293,7 +293,7 @@ AEST.reportHeader=function(){
   const cs=db.classes,ps=periods();
   const ass=assessments(),ss=students();
   if(!ss.some(s=>s.id===this.reportStudent))this.reportStudent=ss[0]?.id||'';
-  return '<div class="panel"><div class="filters report-filters"><div class="field"><label>Turma</label><select onchange="setClass(this.value)">'+this.reportOptions(cs.map(c=>({id:c.id,name:c.name})),classId)+'</select></div><div class="field"><label>Semestre / período</label><select onchange="setPeriod(this.value)">'+this.reportOptions(ps,periodId)+'</select></div>'+((this.reportTab==='instrument')?'<div class="field"><label>Instrumento de avaliação</label><select onchange="assessmentId=this.value;render()">'+this.reportOptions(ass,assessmentId)+'</select></div>':'')+((this.reportTab==='student')?'<div class="field"><label>Aluno</label><select onchange="AEST.reportStudent=this.value;render()">'+this.reportOptions(ss,this.reportStudent)+'</select></div>':'')+'</div></div>';
+  return '<div class="panel"'+(this.reportTab==='student'?' id="studentDashboardSelectors"':'')+'><div class="filters report-filters"><div class="field"><label>Turma</label><select onchange="setClass(this.value)">'+this.reportOptions(cs.map(c=>({id:c.id,name:c.name})),classId)+'</select></div><div class="field"><label>Semestre / período</label><select onchange="setPeriod(this.value)">'+this.reportOptions(ps,periodId)+'</select></div>'+((this.reportTab==='instrument')?'<div class="field"><label>Instrumento de avaliação</label><select onchange="assessmentId=this.value;render()">'+this.reportOptions(ass,assessmentId)+'</select></div>':'')+((this.reportTab==='student')?'<div class="field"><label>Aluno</label><select onchange="AEST.reportStudent=this.value;render()">'+this.reportOptions(ss,this.reportStudent)+'</select></div>':'')+'</div></div>';
 };
 AEST.reportTabMenu=function(){
   const tabs=[['instrument','Pauta · Instrumento'],['semester','Pauta · Semestre'],['student','Dashboard · Aluno'],['class','Dashboard · Turma'],['global','Dashboard · Global']];
@@ -444,7 +444,10 @@ AEST.globalMean=function(cs,order,domain,date){
 reportsPage=function(){
   if(!db.classes.length)return '<div class="panel empty">Cria uma turma.</div>';
   const panes={instrument:()=>AEST.instrumentReport(),semester:()=>AEST.semesterReport(),student:()=>AEST.studentReport(),class:()=>AEST.classReport(),global:()=>AEST.globalReport()};
-  return '<div class="reporting">'+AEST.reportTabMenu()+AEST.reportHeader()+panes[AEST.reportTab]()+'</div>';
+  const student=by('students',AEST.reportStudent),clazz=by('classes',classId),period=by('periods',periodId);
+  const sticky=AEST.reportTab==='student'&&student?
+    '<div id="studentDashboardStickyHeader" class="grade-sticky-header" aria-hidden="true"><div class="grade-sticky-inner"><div class="grade-sticky-identity"><strong>'+esc(student.name)+'</strong><span>'+esc(clazz?.name||'Turma não selecionada')+'</span></div><div class="grade-sticky-assessment"><strong>Dashboard do aluno</strong><span>'+esc(period?.name||'Período não selecionado')+'</span></div></div></div>':'';
+  return '<div class="reporting">'+AEST.reportTabMenu()+AEST.reportHeader()+sticky+panes[AEST.reportTab]()+'</div>';
 };
 
 /* Editable, finite domain catalog per class. */
@@ -581,14 +584,19 @@ function updateGlobalStickyHeader(){
 }
 function updateGradingStickyHeader(){
   const topHeight=updateGlobalStickyHeader();
-  const header=E('gradeStickyHeader'),selectors=E('gradeSelectors');
-  if(!header||!selectors)return;
   const left=window.matchMedia('(max-width:920px)').matches?0:(document.body.classList.contains('sidebar-collapsed')?70:246);
-  header.style.setProperty('--grade-sticky-left',left+'px');
-  header.style.setProperty('--grade-sticky-top',topHeight+'px');
-  const visible=view==='grades'&&selectors.getBoundingClientRect().bottom<=topHeight;
-  header.classList.toggle('visible',visible);
-  header.setAttribute('aria-hidden',String(!visible));
+  const controls=[
+    {header:E('gradeStickyHeader'),selectors:E('gradeSelectors'),active:view==='grades'},
+    {header:E('studentDashboardStickyHeader'),selectors:E('studentDashboardSelectors'),active:view==='reports'&&AEST.reportTab==='student'}
+  ];
+  for(const control of controls){
+    if(!control.header||!control.selectors)continue;
+    control.header.style.setProperty('--grade-sticky-left',left+'px');
+    control.header.style.setProperty('--grade-sticky-top',topHeight+'px');
+    const visible=control.active&&control.selectors.getBoundingClientRect().bottom<=topHeight;
+    control.header.classList.toggle('visible',visible);
+    control.header.setAttribute('aria-hidden',String(!visible));
+  }
 }
 window.addEventListener('scroll',updateGradingStickyHeader,{passive:true});
 window.addEventListener('resize',updateGradingStickyHeader);
