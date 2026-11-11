@@ -609,7 +609,7 @@ const reportSidebarEntries=[
   {id:'class',label:'Dashboard da turma',description:'Evolução dos alunos e das médias por domínio.'},
   {id:'global',label:'Dashboard global',description:'Comparação das turmas e evolução por domínio.'}
 ];
-AEST.reportMenuOpen=true;
+AEST.reportMenuOpen=view==='reports';
 function renderReportSidebarNav(){
   const nav=E('nav');
   if(!nav)return;
@@ -626,11 +626,9 @@ function renderReportSidebarNav(){
   existing.replaceWith(group);
 }
 function toggleReportSubmenu(){
-  AEST.reportMenuOpen=!AEST.reportMenuOpen;
-  if(AEST.reportMenuOpen&&!window.matchMedia('(max-width:920px)').matches&&document.body.classList.contains('sidebar-collapsed')){
-    document.body.classList.remove('sidebar-collapsed');
-    syncSidebar();
-  }
+  const collapsed=!window.matchMedia('(max-width:920px)').matches&&document.body.classList.contains('sidebar-collapsed');
+  AEST.reportMenuOpen=collapsed?true:!AEST.reportMenuOpen;
+  if(collapsed){document.body.classList.remove('sidebar-collapsed');syncSidebar()}
   const group=E('nav')?.querySelector('.report-nav-group');
   if(!group)return;
   const parent=group.querySelector('.report-nav-parent'),submenu=group.querySelector('.report-nav-submenu');
