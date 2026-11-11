@@ -570,8 +570,7 @@ excelSheets=function(){
 function updateGlobalStickyHeader(){
   const header=E('globalStickyHeader'),original=document.querySelector('.main > .top');
   if(!header||!original)return 0;
-  const main=document.querySelector('.main');
-  const left=main?Math.max(0,main.getBoundingClientRect().left):0;
+  const left=window.matchMedia('(max-width:920px)').matches?0:(document.body.classList.contains('sidebar-collapsed')?70:246);
   header.style.setProperty('--global-sticky-left',left+'px');
   const title=E('globalStickyTitle'),pageTitle=E('pageTitle');
   if(title&&pageTitle)title.textContent=pageTitle.textContent;
@@ -584,8 +583,8 @@ function updateGradingStickyHeader(){
   const topHeight=updateGlobalStickyHeader();
   const header=E('gradeStickyHeader'),selectors=E('gradeSelectors');
   if(!header||!selectors)return;
-  const main=document.querySelector('.main');
-  if(main)header.style.setProperty('--grade-sticky-left',Math.max(0,main.getBoundingClientRect().left)+'px');
+  const left=window.matchMedia('(max-width:920px)').matches?0:(document.body.classList.contains('sidebar-collapsed')?70:246);
+  header.style.setProperty('--grade-sticky-left',left+'px');
   header.style.setProperty('--grade-sticky-top',topHeight+'px');
   const visible=view==='grades'&&selectors.getBoundingClientRect().bottom<=topHeight;
   header.classList.toggle('visible',visible);
@@ -595,3 +594,7 @@ window.addEventListener('scroll',updateGradingStickyHeader,{passive:true});
 window.addEventListener('resize',updateGradingStickyHeader);
 const renderBeforeSticky=render;
 render=function(){renderBeforeSticky();updateGradingStickyHeader()};
+const toggleBeforeSticky=toggleSidebar;
+toggleSidebar=function(){toggleBeforeSticky();updateGradingStickyHeader()};
+const closeBeforeSticky=closeSidebar;
+closeSidebar=function(){closeBeforeSticky();updateGradingStickyHeader()};
