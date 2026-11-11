@@ -67,3 +67,21 @@
 .individual-fields{grid-template-columns:minmax(85px,115px) minmax(0,1fr)}
 .report-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Header visible only while the class/student/assessment selectors are above the viewport. */
+.grade-sticky-header{
+  position:fixed;top:0;left:var(--grade-sticky-left,246px);right:0;z-index:35;
+  padding:8px clamp(16px,3vw,52px);background:rgba(255,255,255,.97);
+  border-bottom:1px solid #dce5ef;box-shadow:0 5px 18px #0f244014;
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-8px);
+  transition:opacity .16s ease,transform .16s ease,visibility .16s;
+}
+.grade-sticky-header.visible{opacity:1;visibility:visible;transform:translateY(0)}
+.grade-sticky-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:100%;min-width:0}
+.grade-sticky-identity,.grade-sticky-assessment{display:flex;min-width:0;flex-direction:column;gap:2px}
+.grade-sticky-identity{flex:1}.grade-sticky-assessment{flex:1;text-align:right}
+.grade-sticky-inner strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1c365b}
+.grade-sticky-inner span{font-size:11px;color:#65748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:920px){.grade-sticky-header{left:0;padding:9px 14px;z-index:45}}
+@media(max-width:450px){.grade-sticky-inner{gap:9px}.grade-sticky-inner strong{font-size:12px}.grade-sticky-inner span{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.grade-sticky-header{transition:none;transform:none}}
