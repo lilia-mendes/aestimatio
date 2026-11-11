@@ -130,7 +130,7 @@ editAssessment=function(id=''){
   draftQuestions=id?questions(id).map(x=>({...x})):[];
   const types=['Teste','Questão de aula','Trabalho'];
   const select='<div class="field"><label>Tipo</label><select name="type" onchange="refreshQuestionType()">'+types.map(type=>'<option '+((a.type||'Teste')===type?'selected':'')+'>'+type+'</option>').join('')+'</select></div>';
-  openModal(id?'Editar avaliação':'Nova avaliação','<div class="formgrid">'+field('Nome','name',a.name||'')+select+field('Data','date',a.date||new Date().toISOString().slice(0,10),'date')+field('Peso relativo no período','weight',a.weight??1,'number','min="0" step="0.01"')+'<div class="full">'+field('Google Docs · ID (opcional)','docId',a.docId||'')+'</div></div><div class="divider"></div><div class="flex between"><h3>Perguntas / critérios</h3><div class="flex"><button type="button" class="btn small" onclick="closeModal();editDomains()">Configurar domínios</button><button type="button" class="btn small" onclick="addQuestion()">+ Adicionar</button></div></div><div id="questionEditor">'+questionRows()+'</div><p class="hint">Os testes e questões de aula totalizam 200 pontos; os Trabalhos usam critérios classificados de 0 a 200, cujos pesos totalizam 100%.</p>',f=>{
+  openModal(id?'Editar avaliação':'Nova avaliação','<div class="formgrid">'+field('Nome','name',a.name||'')+select+field('Data','date',a.date||new Date().toISOString().slice(0,10),'date')+field('Peso relativo no período','weight',a.weight??1,'number','min="0" step="0.01"')+'<div class="full">'+field('Google Docs · ID (opcional)','docId',a.docId||'')+'</div></div><div class="divider"></div><div class="flex between"><h3>Perguntas / critérios</h3><div class="flex"><button type="button" class="btn small" onclick="closeModal();editDomains()">Configurar domínios</button><button type="button" class="btn small" onclick="copyCriteriaFromWork()">Reutilizar critérios</button><button type="button" class="btn small" onclick="addQuestion()">+ Adicionar</button></div></div><div id="questionEditor">'+questionRows()+'</div><p class="hint">Os testes e questões de aula totalizam 200 pontos; os Trabalhos usam critérios classificados de 0 a 200, cujos pesos totalizam 100%.</p>',f=>{
     captureQuestions();
     const name=String(f.get('name')||'').trim(),type=f.get('type'),weight=Number(f.get('weight'));
     if(!name||!Number.isFinite(weight)||weight<0)throw Error('Nome ou peso inválido.');
@@ -495,3 +495,21 @@ render=function(){
 for(const c of db.classes)AEST.domainsFor(c.id);
 save();
 render();
+
+
+function copyCriteriaFromWork(){
+  const type=E('modalBody')?.querySelector('[name="type"]')?.value;
+  if(type!=='Trabalho'){toast('A reutilização de critérios destina-se aos Trabalhos.',true);return}
+  const options=db.assessments.filter(a=>a.classId===classId&&a.type==='Trabalho'&&questions(a.id).length);
+  if(!options.length){toast('Ainda não existem outros Trabalhos com critérios.',true);return}
+  const choice=prompt('Escolhe o trabalho de origem (número):\n'+options.map((a,i)=>(i+1)+'. '+a.name).join('\n'),'1');
+  if(choice===null)return;
+  const index=Number(choice)-1;
+  if(!Number.isInteger(index)||!options[index]){toast('Escolha inválida.',true);return}
+  captureQuestions();
+  if(draftQuestions.length&&!confirm('Substituir os critérios que estão a ser editados pelos do trabalho selecionado?'))return;
+  const valid=AEST.domainsFor(classId).map(d=>d.name);
+  draftQuestions=questions(options[index].id).map((q,i)=>({...q,id:uid(),assessmentId:undefined,domain:valid.includes(q.domain)?q.domain:valid[0],order:i+1}));
+  E('questionEditor').innerHTML=questionRows();
+  toast('Critérios e ponderações reutilizados. Confirma e guarda o trabalho.');
+}
