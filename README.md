@@ -25,7 +25,7 @@ O menu lateral pode ser aberto/recolhido também em ecrãs pequenos. As cinco vi
 
 Quando o cabeçalho principal deixa de estar visível, surge uma **barra fixa** com o botão do menu, título da funcionalidade e estado da ligação Google. Em **Classificar aluno** surge, por baixo, uma barra contextual com aluno, turma e instrumento. Em **Dashboard do aluno**, a barra contextual apresenta aluno, turma e período/semestre. Ambas desaparecem quando os seletores regressam à área visível.
 
-A barra fixa utiliza um **gradiente avermelhado** quando a sincronização não está confirmada (desligada, pendente, offline, erro ou conflito). O ícone de ligação permite solicitar sincronização ou voltar a autenticar; em caso de conflito, não força a substituição de dados.
+A barra fixa utiliza um **gradiente avermelhado** quando a sincronização não está confirmada (desligada, pendente, offline, erro ou conflito). À direita, um **botão sem texto nem animação** mostra duas tomadas **ligadas** quando a ligação está saudável (inclusive durante a verificação) e **separadas** quando há um estado que exige atenção. O estado detalhado está no título acessível do botão e ao passar o rato. O clique solicita sincronização ou nova autenticação; em conflito, não força a substituição de dados.
 
 ## 2. Instrumentos e regras de classificação
 
@@ -126,7 +126,7 @@ Com sessão Google válida, spreadsheet identificada e sincronização previamen
 - Antes de enviar, o código compara dados locais, base anterior e dados remotos. Alterações independentes podem ser conciliadas; alterações concorrentes incompatíveis são sinalizadas como **conflito**.
 - Em conflito, a sincronização automática **não deve substituir** os dados remotos. É necessária revisão humana e uma cópia de segurança.
 - Se a ligação falhar, os dados locais permanecem no navegador; o envio não deve ser assumido como concluído.
-- O indicador no topo pode mostrar **Sincronizado**, **A sincronizar**, **Pendente**, **Sem rede**, **Google desligado** ou **Conflito/erro**.
+- O indicador no topo representa **Sincronizado/A sincronizar** com tomadas ligadas e **Pendente, Sem rede, Google desligado ou Conflito/erro** com tomadas separadas. O ícone **nunca roda nem pisca**; o detalhe do estado está disponível no título do botão e para tecnologias de apoio.
 - A barra fixa usa um **gradiente avermelhado** quando não existe sincronização confirmada. Clicar no ícone permite tentar sincronizar ou voltar a autenticar; em conflito encaminha para as Definições.
 - O botão de **Copiar ligação para outro dispositivo** ajuda a transferir a configuração pública do Client ID; **não** transfere autenticação, dados nem credenciais privadas.
 
