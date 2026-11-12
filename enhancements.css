@@ -153,3 +153,13 @@ body.sidebar-collapsed .report-nav-submenu{display:none}
 .global-sticky-header.cloud-busy{background:rgba(255,255,255,.98)}
 @media(max-width:700px){.cloud-status-action,.cloud-status-toolbar{width:42px;min-width:42px;max-width:42px;height:40px;padding:5px}}
 @media(max-width:430px){.global-sticky-header .cloud-status-action{width:40px;min-width:40px;max-width:40px;padding:5px}}
+
+/* Keep the static Google plug alongside the menu at tablet and mobile widths.
+   The original base stylesheet stacks .top below 920px; counter that here. */
+@media(max-width:920px){
+  .main > .top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;column-gap:10px;row-gap:0}
+  .main > .top > .top-heading{grid-column:1;min-width:0}
+  .main > .top > .toolbar{grid-column:2;grid-row:1;display:flex;align-items:flex-start;justify-content:flex-end;flex-wrap:nowrap;min-width:42px}
+  .main > .top .top-heading > div{min-width:0}
+  .main > .top #pageTitle,.main > .top #subtitle{overflow-wrap:anywhere}
+}
