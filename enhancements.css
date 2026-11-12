@@ -116,8 +116,6 @@
 .cloud-status-action[data-sync="busy"]{background:#eaf1ff;border-color:#afc7f4;color:#204e93}
 .cloud-status-action[data-sync="pending"],.cloud-status-action[data-sync="error"],.cloud-status-action[data-sync="offline"],.cloud-status-action[data-sync="disconnected"],.cloud-status-action[data-sync="conflict"]{background:#fff4f3;border-color:#e7abae;color:#9b3540}
 .cloud-status-symbol{display:inline-grid;place-items:center;width:19px;min-width:19px;font-size:17px;line-height:1}
-.cloud-status-action[data-sync="busy"] .cloud-status-symbol{animation:cloud-status-spin 1s linear infinite}
-@keyframes cloud-status-spin{to{transform:rotate(360deg)}}
 .cloud-status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:700px){.cloud-status-action{padding:6px 8px;gap:4px;font-size:11px}.cloud-status-toolbar{padding:7px 9px}}
 @media(max-width:430px){.global-sticky-header .cloud-status-label{display:none}.global-sticky-header .cloud-status-action{width:37px;padding:4px}.global-sticky-title{font-size:14px}}
@@ -139,3 +137,19 @@ body.sidebar-collapsed .report-nav-submenu{display:none}
   .report-nav-submenu{margin-left:24px}
   .nav .report-nav-child{padding:10px 8px}
 }
+
+/* Plug-only synchronization controls: static in every state. */
+.cloud-status-action{
+  width:44px;min-width:44px;max-width:44px;height:40px;min-height:40px;
+  padding:5px;gap:0;justify-content:center;align-items:center;
+  transition:background-color .16s ease,border-color .16s ease,color .16s ease;
+}
+.cloud-status-symbol{display:grid;place-items:center;width:30px;min-width:30px;height:25px;font-size:0}
+.cloud-status-symbol svg{display:block;width:30px;height:23px}
+.cloud-status-label{display:none!important}
+.cloud-status-action[data-sync="busy"]{background:#edf8f3;border-color:#b4dccb;color:#135c44}
+.cloud-status-action[data-sync="synced"]{background:#edf8f3;border-color:#b4dccb;color:#135c44}
+.cloud-status-action[data-sync="busy"] .cloud-status-symbol{animation:none!important}
+.global-sticky-header.cloud-busy{background:rgba(255,255,255,.98)}
+@media(max-width:700px){.cloud-status-action,.cloud-status-toolbar{width:42px;min-width:42px;max-width:42px;height:40px;padding:5px}}
+@media(max-width:430px){.global-sticky-header .cloud-status-action{width:40px;min-width:40px;max-width:40px;padding:5px}}
