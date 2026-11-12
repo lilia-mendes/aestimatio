@@ -226,19 +226,26 @@ function cloudConnectionState(){
   if(/^A atualizar a lista/i.test(AESTSYNC.state))return {key:'pending',label:'Pendente',detail:AESTSYNC.state};
   return {key:'pending',label:'Verificar',detail:'Clica para verificar a sincronização com o Google Sheets.'};
 }
+/* Static paired-plug icons. The two halves touch only when connected. */
+const cloudPlugConnected='<svg viewBox="0 0 36 24" width="28" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 9h3m-3 6h3"/><rect x="5" y="6" width="11" height="12" rx="2.5"/><path d="M16 10h4m-4 4h4"/><rect x="20" y="6" width="11" height="12" rx="2.5"/><path d="M31 9h3m-3 6h3"/></svg>';
+const cloudPlugDisconnected='<svg viewBox="0 0 36 24" width="28" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M1 9h3m-3 6h3"/><rect x="4" y="6" width="10" height="12" rx="2.5"/><path d="M14 10h2m-2 4h2"/><path d="M21 10h2m-2 4h2"/><rect x="23" y="6" width="10" height="12" rx="2.5"/><path d="M33 9h2m-2 6h2"/></svg>';
 function updateCloudHeader(){
   const status=cloudConnectionState();
+  const connected=status.key==='synced'||status.key==='busy';
   const bar=E('globalStickyHeader');
-  if(bar){bar.dataset.sync=status.key;bar.classList.toggle('cloud-alert',!['synced','busy'].includes(status.key));bar.classList.toggle('cloud-busy',status.key==='busy')}
+  if(bar){
+    bar.dataset.sync=status.key;
+    bar.classList.toggle('cloud-alert',!connected);
+    bar.classList.toggle('cloud-busy',status.key==='busy');
+  }
   for(const id of ['globalCloudSyncButton','topCloudSyncButton']){
-    const b=E(id);if(!b)continue;
-    b.dataset.sync=status.key;
-    b.setAttribute('aria-label',status.detail);
-    b.setAttribute('title',status.detail);
-    const label=E(id==='globalCloudSyncButton'?'globalCloudSyncLabel':'topCloudSyncLabel');
-    if(label)label.textContent=status.label;
-    const icon=b.querySelector('.cloud-status-symbol');
-    if(icon)icon.textContent=status.key==='synced'?'✓':status.key==='busy'?'⟳':status.key==='disconnected'?'↪':status.key==='conflict'?'!':'⟳';
+    const button=E(id);
+    if(!button)continue;
+    button.dataset.sync=status.key;
+    button.setAttribute('aria-label',status.label+'. '+status.detail);
+    button.setAttribute('title',status.label+'. '+status.detail);
+    const symbol=button.querySelector('.cloud-status-symbol');
+    if(symbol)symbol.innerHTML=connected?cloudPlugConnected:cloudPlugDisconnected;
   }
 }
 async function cloudSyncAction(){
