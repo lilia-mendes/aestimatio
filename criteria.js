@@ -11,8 +11,8 @@ const AESTCRITERIA={
   complete(q,g){const cs=this.list(q),values=this.scores(q,g);return cs.length>0&&values.every((v,i)=>v!==null&&Number.isFinite(v)&&v>=0&&v<=Number(cs[i].weight)*10)},
   suggested(q,g){if(!this.complete(q,g))return null;return this.scores(q,g).reduce((n,v)=>n+v,0)*Number(q.max)/100},
   grade(q,g){
-    if(!this.complete(q,g))return null;
-    return g?.scoreMode==='manual'?Number(g.score):this.suggested(q,g);
+    if(g?.scoreMode==='manual'&&g.score!==null&&g.score!==undefined)return Number(g.score);
+    return this.suggested(q,g);
   },
   same(a,b){return JSON.stringify(a||[])===JSON.stringify(b||[])},
   saveCriterion(a,s,qid,cid,input){
@@ -28,27 +28,35 @@ const AESTCRITERIA={
     if(raw==='')delete g.criterionScores[cid];else g.criterionScores[cid]=Number(raw);
     const suggestion=this.suggested(q,g);
     if(g.scoreMode!=='manual')g.score=suggestion;
-    else if(suggestion===null)g.score=null;
     else if(g.manualScore!==undefined&&g.manualScore!==null)g.score=Number(g.manualScore);
     g.updatedAt=new Date().toISOString();save();render();
   },
   setManual(a,s,qid,enabled){
-    const q=by('questions',qid),g=db.grades.find(x=>x.assessmentId===a&&x.studentId===s&&x.questionId===qid);
-    if(!q||!g||!this.complete(q,g)){toast('Classifica primeiro todos os critérios.',true);return}
-    if(enabled){g.scoreMode='manual';g.manualScore=this.suggested(q,g);g.score=g.manualScore}
-    else{g.scoreMode='auto';delete g.manualScore;g.score=this.suggested(q,g)}
+    const q=by('questions',qid);
+    if(!q)return;
+    let g=db.grades.find(x=>x.assessmentId===a&&x.studentId===s&&x.questionId===qid);
+    if(!g){g={id:uid(),assessmentId:a,studentId:s,questionId:qid,score:null,note:'',criterionScores:{}};db.grades.push(g)}
+    if(enabled){
+      g.scoreMode='manual';
+      g.manualScore=g.score??this.suggested(q,g)??null;
+      g.score=g.manualScore;
+    }else{
+      g.scoreMode='auto';
+      delete g.manualScore;
+      g.score=this.suggested(q,g);
+    }
     g.updatedAt=new Date().toISOString();save();render();
   },
   setManualScore(a,s,qid,input){
     const q=by('questions',qid),g=db.grades.find(x=>x.assessmentId===a&&x.studentId===s&&x.questionId===qid);
-    if(!g||!this.complete(q,g))return;
-    const val=Number(input.value);
-    if(!Number.isFinite(val)||val<0||val>Number(q.max)){toast('A nota deve estar entre 0 e '+fmt(q.max),true);render();return}
+    if(!g||!q)return;
+    const raw=String(input.value).trim(),val=raw===''?null:Number(raw);
+    if(raw!==''&&(!Number.isFinite(val)||val<0||val>Number(q.max))){toast('A nota deve estar entre 0 e '+fmt(q.max),true);render();return}
     g.scoreMode='manual';g.manualScore=val;g.score=val;g.updatedAt=new Date().toISOString();save();render();
   },
   row(a,s,q,i){
     const cs=this.list(q),g=db.grades.find(x=>x.assessmentId===a.id&&x.studentId===s&&x.questionId===q.id);
-    const complete=this.complete(q,g),suggested=this.suggested(q,g),manual=complete&&g?.scoreMode==='manual';
+    const complete=this.complete(q,g),suggested=this.suggested(q,g),manual=g?.scoreMode==='manual'||(!g?.scoreMode&&g?.score!==null&&g?.score!==undefined&&!g?.criterionScores);
     const points=this.scores(q,g);
     const items=cs.map((c,j)=>{
       const score=points[j],max=Number(c.weight)*10,slider=score===null?0:score;
@@ -61,9 +69,9 @@ const AESTCRITERIA={
       '<div class="hint">'+esc(q.domain)+' · Cotação '+fmt(q.max)+' pontos · '+cs.length+' critério(s)</div>'+
       '<div class="criterion-grades">'+items+'</div>'+
       '<div class="criterion-total"><strong>'+(complete?'Sugestão: '+fmt(suggested)+' / '+fmt(q.max):'Classificação pendente ('+points.filter(x=>x!==null).length+'/'+cs.length+' critérios)')+'</strong>'+
-      (complete?'<span class="hint">Nota atribuída: '+fmt(g?.score)+' / '+fmt(q.max)+'</span>':'')+'</div>'+
-      '<label class="criterion-manual"><input type="checkbox" '+(manual?'checked ':'')+(!complete?'disabled ':'')+'onchange="AESTCRITERIA.setManual(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this.checked)"> Ajustar classificação manualmente</label>'+
-      (manual?'<div class="field"><label>Classificação manual (0–'+fmt(q.max)+')</label><input type="number" min="0" max="'+q.max+'" step="0.01" value="'+g.score+'" onchange="AESTCRITERIA.setManualScore(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this)"></div><p class="hint">A classificação manual mantém-se até regressares ao modo automático. Revê-a se alterares critérios.</p>':'')+
+      (g?.score!==null&&g?.score!==undefined?'<span class="hint">Nota atribuída: '+fmt(g.score)+' / '+fmt(q.max)+'</span>':'')+'</div>'+
+      '<label class="criterion-manual"><input type="checkbox" '+(manual?'checked ':'')+'onchange="AESTCRITERIA.setManual(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this.checked)"> Usar classificação manual</label>'+
+      (manual?'<div class="field"><label>Classificação manual (0–'+fmt(q.max)+')</label><input type="number" min="0" max="'+q.max+'" step="0.01" placeholder="Por classificar" value="'+(g?.score??'')+'" onchange="AESTCRITERIA.setManualScore(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this)"></div><p class="hint">A nota manual é válida mesmo que os critérios ainda não estejam classificados. Podes regressar à nota automática quando terminares os critérios.</p>':'')+
       '<div class="field"><label>Anotação</label><textarea rows="2" onchange="setGradeNote(\''+a.id+'\',\''+s+'\',\''+q.id+'\',this)">'+esc(g?.note||'')+'</textarea></div></section>';
   }
 };
@@ -124,15 +132,34 @@ editAssessment=function(id=''){
         if(cs.length&&!AESTCRITERIA.valid(cs))throw Error('Os critérios da pergunta "'+q.name+'" têm de ter descrição, pesos positivos e soma exatamente igual a 10.');
         const before=prior.find(x=>x.id===q.id);
         const hasGrade=before&&db.grades.some(g=>g.questionId===q.id&&(g.score!==null&&g.score!==undefined||Object.keys(g.criterionScores||{}).length));
-        if(hasGrade&&(!AESTCRITERIA.same(AESTCRITERIA.list(before),cs)||(AESTCRITERIA.list(before).length&&Number(before.max)!==Number(q.max))))
-          throw Error('A pergunta "'+q.name+'" já tem classificações. Não é possível alterar os seus critérios ou cotação sem rever as notas.');
+        if(hasGrade&&Number(before.max)!==Number(q.max)&&AESTCRITERIA.list(before).length)
+          throw Error('A cotação da pergunta "'+q.name+'" já classificada não pode ser alterada.');
       }
     }
     const keep=draftQuestions.map(q=>({id:q.id,criteria:AESTCRITERIA.list(q).map(c=>({...c,name:String(c.name).trim(),weight:Number(c.weight)}))}));
+    const changed=keep.filter(item=>{
+      const before=prior.find(q=>q.id===item.id);
+      return before&&!AESTCRITERIA.same(AESTCRITERIA.list(before),item.criteria);
+    });
     const result=oldSubmit(form);
     if(result===false)return false;
-    if(!isWork)for(const item of keep){
-      const q=by('questions',item.id);if(q)q.criteria=item.criteria;
+    if(!isWork){
+      for(const item of keep){
+        const q=by('questions',item.id);if(q)q.criteria=item.criteria;
+      }
+      // Existing teacher-given marks remain authoritative when criteria are added
+      // or redefined. Discard only the obsolete criterion detail, never the mark.
+      for(const item of changed)for(const g of db.grades.filter(x=>x.questionId===item.id)){
+        if(g.score!==null&&g.score!==undefined){
+          g.scoreMode='manual';
+          g.manualScore=Number(g.score);
+        }else{
+          g.scoreMode='auto';
+          delete g.manualScore;
+        }
+        g.criterionScores={};
+        g.updatedAt=new Date().toISOString();
+      }
     }
     return result;
   };
