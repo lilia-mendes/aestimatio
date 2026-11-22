@@ -190,13 +190,27 @@
     }catch(e){S.setStatus('Por sincronizar · '+e.message);toast(e.message,true)}
     finally{S.busy=false}
   };
+  S.downloadRecovery=function(key){
+    try{
+      const raw=localStorage.getItem(key);
+      if(!raw)throw Error('A cópia já não está disponível neste navegador.');
+      const item=JSON.parse(raw);
+      downloadBlob(new Blob([JSON.stringify(item,null,2)],{type:'application/json'}),'atlas_recuperacao_'+item.createdAt.replace(/[:.]/g,'-')+'.json');
+      S.track('Cópia de recuperação descarregada');
+    }catch(e){toast('Erro ao descarregar cópia: '+e.message,true)}
+  };
   const priorSettings=settingsPage;
   settingsPage=function(){
     const log=(()=>{try{return JSON.parse(localStorage.getItem('atlas_sync_audit')||'[]')}catch(e){return []}})();
     const entries=log.slice(0,20).map(x=>'<tr><td>'+esc(new Date(x.at).toLocaleString('pt-PT'))+'</td><td>'+esc(x.action)+'</td><td>'+esc(x.device||'')+'</td></tr>').join('');
+    const recovered=Object.keys(localStorage).filter(x=>x.startsWith('atlas_recovery_')).sort().reverse();
+    const backups=recovered.map(k=>{let detail;try{detail=JSON.parse(localStorage.getItem(k)||'{}')}catch(e){return ''}
+      return '<div class="flex between"><span>'+esc(new Date(detail.createdAt||Date.now()).toLocaleString('pt-PT'))+' · '+esc(detail.reason||'Cópia de segurança')+'</span><button class="btn small" onclick="AESTSYNC.downloadRecovery(&quot;'+esc(k)+'&quot;)">Descarregar</button></div>';
+    }).join('');
     return priorSettings()+'<section class="panel"><h2>Histórico técnico de sincronização</h2>'+
       '<p class="hint">Regista operações locais recentes (não substitui um histórico de todas as classificações).</p>'+
-      '<details><summary>Consultar últimas operações ('+log.length+')</summary><table><thead><tr><th>Data</th><th>Operação</th><th>Dispositivo</th></tr></thead><tbody>'+entries+'</tbody></table></details></section>';
+      '<details><summary>Consultar últimas operações ('+log.length+')</summary><table><thead><tr><th>Data</th><th>Operação</th><th>Dispositivo</th></tr></thead><tbody>'+entries+'</tbody></table></details>'+ 
+      '<details><summary>Cópias de recuperação neste navegador ('+recovered.length+')</summary><p class="hint">Descarrega antes de limpar os dados do navegador. A recuperação nunca é aplicada automaticamente.</p>'+backups+'</details></section>';
   };
   /* Automatic sync already checks every conflict; do not silently publish over a deleted record. */
 })();
