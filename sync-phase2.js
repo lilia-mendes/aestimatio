@@ -28,6 +28,18 @@
       }
     }
     earlierSave();
+    if(!S.busy&&!S.suspendRevision){
+      try{
+        const previous=JSON.parse(localStorage.getItem('atlas_sync_edit_snapshot')||'null');
+        const current={};
+        for(const k of S.keys().filter(k=>k!=='deletions'))current[k]=(db[k]||[]).map(x=>[x.id,x._revision||null]);
+        if(previous){
+          const changed=Object.keys(current).filter(k=>JSON.stringify(previous[k]||[])!==JSON.stringify(current[k]||[]));
+          if(changed.length)S.track('Alterações locais: '+changed.map(k=>labels[k]||k).join(', '));
+        }
+        localStorage.setItem('atlas_sync_edit_snapshot',JSON.stringify(current));
+      }catch(e){}
+    }
   };
   const oldValidate=S.validate.bind(S);
   S.validate=function(data){
@@ -80,7 +92,7 @@
       const rec=(data[k]||[]).find(x=>x.id===t.recordId);
       if(!rec)continue;
       const observed=(local[k]||[]).concat(remote[k]||[]).filter(x=>x.id===t.recordId);
-      const changed=observed.some(x=>t.baseRevision&&x._revision&&x._revision!==t.baseRevision);
+      const changed=observed.some(x=>!t.baseRevision||!x._revision||x._revision!==t.baseRevision);
       if(!changed)data[k]=data[k].filter(x=>x.id!==t.recordId);
     }
     return data;
