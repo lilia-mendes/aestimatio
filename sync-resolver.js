@@ -12,9 +12,9 @@
   S.deviceId();
   S.pendingConflict=null;
   S.remoteInfo=null;
-  S.backup=function(reason){
+  S.backup=function(reason,remoteSnapshot=null){
     const stamp=new Date().toISOString(),backupKey='atlas_recovery_'+stamp+'_'+uid().slice(0,6);
-    const backup={createdAt:stamp,reason,device:S.deviceId(),spreadsheetId:db.settings.spreadsheetId,data:db,base:S.getBase()};
+    const backup={createdAt:stamp,reason,device:S.deviceId(),spreadsheetId:db.settings.spreadsheetId,data:db,base:S.getBase(),remoteSnapshot};
     try{
       localStorage.setItem(backupKey,JSON.stringify(backup));
       const entries=Object.keys(localStorage).filter(x=>x.startsWith('atlas_recovery_')).sort().reverse();
@@ -78,7 +78,7 @@
       S.pendingConflict={remote,local,base,conflicts:S.getBase()?S.merge(base,local,remote).conflicts:['Versões iniciais ainda não conciliadas']};
       setView('settings');
       const el=E('syncResolverPanel');
-      if(el){el.innerHTML=S.resolverHTML();el.scrollIntoView({behavior:'smooth',block:'start'})}
+      if(el){el.innerHTML=S.resolverHTML();S.updateChoice();el.scrollIntoView({behavior:'smooth',block:'start'})}
     }catch(e){toast('Não foi possível comparar dados: '+e.message,true)}
   };
   S.resolverHTML=function(){
@@ -120,7 +120,7 @@
     if(S.busy){toast('A sincronização já está em curso.',true);return}
     S.busy=true;S.setStatus('A resolver conflito…');
     try{
-      S.backup('Antes de resolver conflito: '+choice);
+      S.backup('Antes de resolver conflito: '+choice,pending.remote);
       const latest=await S.fetchCloud();
       if(!S.eq(latest,pending.remote)){S.pendingConflict=null;throw Error('O Drive foi alterado entretanto. Compara novamente as versões.')}
       if(destructive){
@@ -162,7 +162,7 @@
       const errors=S.validate(result.data);
       if(errors.length)throw Error('Validação de dados: '+errors.slice(0,3).join('; '));
       if(!S.eq(remote,result.data)){
-        S.backup('Antes de sincronização automática');
+        S.backup('Antes de sincronização automática',remote);
         const latest=await S.fetchCloud();
         if(!S.eq(latest,remote))throw Error('O Drive mudou. Nova comparação necessária.');
         await S.upload(result.data);
