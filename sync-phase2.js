@@ -103,8 +103,21 @@
       const label=(labels[k]||k)+' '+t.recordId+' (eliminação versus edição)';
       if(!merged.conflicts.includes(label))merged.conflicts.push(label);
     }
+    /* A recorded deletion of an unchanged baseline is not a conflict. */
+    merged.conflicts=merged.conflicts.filter(label=>{
+      for(const t of deletions.values()){
+        if(label!==(t.collection+' '+t.recordId+' (remoção remota)')&&label!==(t.collection+' '+t.recordId))continue;
+        const before=(b[t.collection]||[]).find(x=>x.id===t.recordId);
+        const localRecord=(l[t.collection]||[]).find(x=>x.id===t.recordId);
+        const remoteRecord=(r[t.collection]||[]).find(x=>x.id===t.recordId);
+        if((!localRecord||S.eq(localRecord,before))&&(!remoteRecord||S.eq(remoteRecord,before)))return false;
+      }
+      return true;
+    });
     return merged;
   };
+  const oldCombine=S.combine.bind(S);
+  S.combine=function(local,remote,precedence){return S.applyDeletionMarkers(oldCombine(local,remote,precedence),local,remote)};
   const oldResolverHTML=S.resolverHTML.bind(S);
   S.resolverHTML=function(){
     let html=oldResolverHTML();
