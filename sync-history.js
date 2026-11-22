@@ -7,7 +7,6 @@
   const QUEUE='atlas_history_queue_v1';
   const HISTORY_FOLDER='atlas_history_folder_id_v1';
   const LAST_ERROR='atlas_history_last_error_v1';
-  const LIMIT=80;
   const baseURL='https://www.googleapis.com/drive/v3/files';
   let uploading=false;
   let queuedRetry=false;
@@ -31,13 +30,28 @@
     if(/^Aplicação iniciada/i.test(s))return 'Aplicação iniciada';
     return 'Evento técnico';
   }
+  /* Import the pre-existing local audit log only once, without duplicating future events. */
+  try{
+    const migrationFlag='atlas_history_local_audit_migrated_v1';
+    if(!localStorage.getItem(migrationFlag)){
+      const old=JSON.parse(localStorage.getItem('atlas_sync_audit')||'[]');
+      const pending=readQueue();
+      const archive=old.filter(x=>x&&x.at&&x.action).map(x=>({
+        id:uid(),at:x.at,device:x.device||S.deviceId(),type:cleanMessage(x.action)
+      }));
+      writeQueue([...archive.reverse(),...pending]);
+      localStorage.setItem(migrationFlag,'1');
+    }
+  }catch(e){
+    try{localStorage.setItem(LAST_ERROR,'Falha na migração do histórico técnico anterior')}catch(_){}
+  }
   const originalTrack=S.track.bind(S);
   S.track=function(action){
     originalTrack(action); // keep local audit for offline use
     try{
       const rows=readQueue(),when=new Date().toISOString();
       rows.push({id:uid(),at:when,device:S.deviceId(),type:cleanMessage(action)});
-      writeQueue(rows.slice(-LIMIT));
+      writeQueue(rows);
     }catch(e){
       try{localStorage.setItem(LAST_ERROR,'Histórico local sem espaço para arquivo')}catch(_){}
     }
