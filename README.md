@@ -180,3 +180,11 @@ O acompanhamento de funcionalidades e validações pendentes encontra-se nos [is
 
 **Última revisão da documentação:** 11 de novembro de 2026.  
 **Licença:** consultar `LICENSE` no repositório.
+
+## Resolução assistida de conflitos (novembro de 2026)
+
+A secção **Definições → Identidade e resolução de conflitos** identifica a instalação local, apresenta contagens por entidade (local/Drive) e permite comparar versões antes de decidir. Existem quatro modos de resolução: substituir os dados locais pela versão remota, substituir o Drive pela versão local (dupla confirmação), ou fundir por identificador com precedência local/remota. Uma fusão mantém os registos exclusivos de ambas as origens; registos com o mesmo ID seguem a precedência selecionada. Antes de uma operação destrutiva, o Atlas tenta guardar uma cópia local de recuperação; a falta de espaço impede a operação. A exportação JSON continua disponível.
+
+As publicações feitas pela nova rotina guardam também metadados de revisão, revisão anterior, data UTC, identificador da instalação e da operação na linha 3 da folha `Atlas_Config`. O identificador da instalação permanece no localStorage, mas não é uma identidade pessoal nem autenticação. As versões antigas sem metadados continuam legíveis. A aplicação verifica os dados remotos antes de escrever e volta a lê-los após a publicação. As alterações continuam a exigir que a Google autorize a sessão.
+
+**Limitações importantes:** a Sheets API não fornece uma transação de comparação-e-escrita atómica de toda a spreadsheet. Dois escritores simultâneos ainda podem competir; não interpretar a verificação como garantia transacional. A resolução por campo individual, os marcadores de eliminação e uma coordenação de escritas com bloqueio são evoluções posteriores. Os backups preventivos permanecem no navegador onde foram criados (e podem ser eliminados com os dados desse navegador); é aconselhável descarregar um JSON para arquivo independente. As alterações devem ser testadas em dois dispositivos antes de utilização regular com dados reais.
