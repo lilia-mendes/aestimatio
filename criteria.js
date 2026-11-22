@@ -81,7 +81,7 @@ questionRows=function(){
   if(isWork)return html;
   return html.replace(/(<div><button type="button" class="btn danger small" onclick="delQuestion\((\d+)\)">Remover<\/button><\/div>)(<\/div>)/g,(whole,button,index,end)=>{
     const q=draftQuestions[Number(index)],items=AESTCRITERIA.list(q);
-    const rows=items.map((c,j)=>'<div class="criterion-edit" data-ci="'+j+'" data-id="'+esc(c.id)+'"><input class="cname" aria-label="Descrição do critério" placeholder="Descrição do critério" value="'+esc(c.name)+'"><input type="number" class="cweight" aria-label="Peso do critério" min="0.01" max="10" step="0.01" value="'+esc(c.weight)+'"><button type="button" class="btn danger small" onclick="aestRemoveCriterion('+index+','+j+')">Remover</button></div>').join('');
+    const rows=items.map((c,j)=>'<div class="criterion-edit" data-ci="'+j+'" data-id="'+esc(c.id)+'"><input class="cname" aria-label="Descrição do critério" placeholder="Descrição do critério" value="'+esc(c.name)+'"><input type="number" class="cweight" aria-label="Peso do critério" min="1" max="10" step="1" value="'+esc(c.weight)+'"><button type="button" class="btn danger small" onclick="aestRemoveCriterion('+index+','+j+')">Remover</button></div>').join('');
     const sum=items.reduce((n,c)=>n+Number(c.weight||0),0);
     return button+'<div class="criterion-editor"><div class="flex between"><strong>Critérios de correção (opcionais)</strong><button type="button" class="btn small" onclick="aestAddCriterion('+index+')">+ Critério</button></div>'+
       rows+'<p class="hint">Total dos pesos: '+fmt(sum)+' / 10'+(items.length&&Math.abs(sum-10)>.000001?' · a soma tem de ser 10':'')+'</p></div>'+end;
