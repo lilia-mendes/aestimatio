@@ -32,6 +32,7 @@ const AESTSYNC={
     const url=base+'/values:batchGet?'+names.map(n=>'ranges='+encodeURIComponent("'"+n+"'!A1:B10000")).join('&');
     const out=await apiGoogle(url);
     const data={settings:{}};for(const k of this.keys())data[k]=[];
+    try{this.lastRemoteMeta=JSON.parse((out.valueRanges||[])[0]?.values?.[2]?.[1]||'null')}catch(e){this.lastRemoteMeta=null}
     (out.valueRanges||[]).forEach((r,i)=>{
       const key=names[i]==='Atlas_Config'?'settings':this.keys().find(k=>TABNAMES[k]===names[i]);
       if(key==='settings'){
@@ -81,7 +82,7 @@ const AESTSYNC={
     const base='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
     const info=await apiGoogle(base+'?fields=sheets.properties');
     const specs=[];
-    const cfgRows=[['key','json'],['settings',JSON.stringify(data.settings)]];
+    const cfgRows=[['key','json'],['settings',JSON.stringify(data.settings)],['_metadata',JSON.stringify({schema:1,revision:uid(),parentRevision:this.lastRemoteMeta?.revision||null,publishedAt:new Date().toISOString(),publisher:this.deviceId?this.deviceId():'legacy',operationId:uid()})]];
     specs.push({name:'Atlas_Config',values:cfgRows});
     for(const k of this.keys()){
       specs.push({name:TABNAMES[k],values:[['id','json'],...(data[k]||[]).map(item=>[item.id,JSON.stringify(item)])]});
