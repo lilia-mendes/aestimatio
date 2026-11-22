@@ -163,3 +163,51 @@ body.sidebar-collapsed .report-nav-submenu{display:none}
   .main > .top .top-heading > div{min-width:0}
   .main > .top #pageTitle,.main > .top #subtitle{overflow-wrap:anywhere}
 }
+
+/* Assessment editor: fixed modal actions and clearly separated questions. */
+#modal:open{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  max-height:90vh;
+  max-height:90dvh;
+}
+#modal #modalForm{
+  display:flex;
+  flex:1 1 auto;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+}
+#modal #modalForm > .body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+}
+#modal #modalForm > .foot{
+  flex:0 0 auto;
+  position:relative;
+  z-index:2;
+  background:#fff;
+  box-shadow:0 -5px 14px rgba(22,42,71,.07);
+}
+#modal #questionEditor > [data-qi]{
+  background:#fff;
+  border:1px solid #cfd9e8;
+  border-left:4px solid #5d83c5;
+  border-radius:12px;
+  padding:16px;
+  margin:0 0 16px !important;
+  box-shadow:0 2px 7px rgba(20,40,70,.035);
+}
+#modal #questionEditor > [data-qi] > .field,
+#modal #questionEditor > [data-qi] > .criterion-editor{
+  min-width:0;
+}
+@media(max-width:600px){
+  #modal:open{max-height:95vh;max-height:95dvh}
+  #modal #modalForm > .body{padding:16px}
+  #modal #modalForm > .foot{padding:12px 16px}
+  #modal #questionEditor > [data-qi]{padding:12px}
+}
