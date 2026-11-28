@@ -2,7 +2,7 @@
 /* Conflict resolution and recovery UI. Loaded after cloudsync.js. */
 (function(){
   const S=AESTSYNC;
-  const names={schoolYears:'Anos letivos',regimes:'Regimes',classes:'Turmas',students:'Alunos',periods:'Períodos',assessments:'Avaliações',questions:'Perguntas',grades:'Classificações',stars:'Estrelas'};
+  const names={schoolYears:'Anos letivos',regimes:'Regimes',classes:'Turmas',students:'Alunos',periods:'Períodos',assessments:'Avaliações',questions:'Perguntas',grades:'Classificações',stars:'Estrelas',domainConfigs:'Domínios',deletions:'Eliminações'};
   const key='atlas_installation_id';
   S.deviceId=function(){
     let id=localStorage.getItem(key);
@@ -12,16 +12,6 @@
   S.deviceId();
   S.pendingConflict=null;
   S.remoteInfo=null;
-  S.backup=function(reason,remoteSnapshot=null){
-    const stamp=new Date().toISOString(),backupKey='atlas_recovery_'+stamp+'_'+uid().slice(0,6);
-    const backup={createdAt:stamp,reason,device:S.deviceId(),spreadsheetId:db.settings.spreadsheetId,data:db,base:S.getBase(),remoteSnapshot};
-    try{
-      localStorage.setItem(backupKey,JSON.stringify(backup));
-      const entries=Object.keys(localStorage).filter(x=>x.startsWith('atlas_recovery_')).sort().reverse();
-      for(const old of entries.slice(12))localStorage.removeItem(old);
-    }catch(e){throw Error('Não foi possível guardar uma cópia local. Liberta espaço ou exporta JSON antes de continuar.')}
-    return backupKey;
-  };
   S.track=function(action){
     try{
       const k='atlas_sync_audit',log=JSON.parse(localStorage.getItem(k)||'[]');
@@ -73,9 +63,9 @@
   S.showResolver=async function(){
     if(!googleToken||!db.settings.spreadsheetId){toast('Liga primeiro o Google Sheets.',true);return}
     try{
-      const remote=await S.fetchCloud(),local=S.snapshot(),base=S.getBase()||remote;
+      const remote=await S.fetchCloud(),local=S.snapshot(),reference=S.getBase(),base=reference?S.comparisonBase(reference,local,remote):remote;
       S.remoteInfo=S.lastRemoteMeta?{...S.lastRemoteMeta}:null;
-      S.pendingConflict={remote,local,base,conflicts:S.getBase()?S.merge(base,local,remote).conflicts:['Versões iniciais ainda não conciliadas']};
+      S.pendingConflict={remote,local,base,conflicts:reference?S.merge(base,local,remote).conflicts:['Versões iniciais ainda não conciliadas']};
       setView('settings');
       const el=E('syncResolverPanel');
       if(el){el.innerHTML=S.resolverHTML();S.updateChoice();el.scrollIntoView({behavior:'smooth',block:'start'})}
@@ -113,26 +103,25 @@
     const problems=S.validate(selected);
     if(problems.length){toast('A operação foi bloqueada por referências inválidas: '+problems.slice(0,2).join('; '),true);return}
     const destructive=choice==='local'||choice==='mergeLocal'||choice==='mergeRemote';
-    const message=choice==='remote'?'Substituir os dados neste navegador pela versão do Drive? A versão atual será guardada numa cópia local.':
-      'Esta operação vai escrever no Google Drive e pode substituir registos. Será guardada uma cópia local. Confirmas?';
+    const message=choice==='remote'?'Substituir os dados neste navegador pela versão do Drive? Não será criada cópia automática. Exporta JSON antes, se necessário.':
+      'Esta operação vai escrever no Google Drive e pode substituir registos. Não será criada cópia automática. Confirmas?';
     if(!confirm(message))return;
     if(destructive&&!confirm('SEGUNDA CONFIRMAÇÃO: pretendes mesmo publicar esta versão no Google Drive?'))return;
     if(S.busy){toast('A sincronização já está em curso.',true);return}
     S.busy=true;S.setStatus('A resolver conflito…');
     try{
-      S.backup('Antes de resolver conflito: '+choice,pending.remote);
+      S.assertLocalUnchanged(pending.local);
       const latest=await S.fetchCloud();
       if(!S.eq(latest,pending.remote)){S.pendingConflict=null;throw Error('O Drive foi alterado entretanto. Compara novamente as versões.')}
+      S.assertLocalUnchanged(pending.local);
       if(destructive){
         S.lastRemoteMeta=S.lastRemoteMeta||null;
         await S.upload(selected);
         const check=await S.fetchCloud();
         if(!S.eq(check,selected))throw Error('A verificação após a publicação falhou. Não será assumida sincronização.');
       }
-      S.adopt(selected);
-      S.setBase(selected);
-      db.settings.lastSync=new Date().toLocaleString('pt-PT');
-      localStorage.setItem(STORE,JSON.stringify(db));
+      S.assertLocalUnchanged(pending.local);
+      S.finish(selected);
       S.pendingConflict=null;S.track('Conflito resolvido: '+choice);
       S.setStatus('Sincronizado · '+db.settings.lastSync);
       toast('Versão escolhida aplicada e confirmada.');
@@ -146,11 +135,12 @@
   const legacySync=S.sync.bind(S);
   S.sync=async function(){
     if(S.busy||!googleToken||!db.settings.spreadsheetId)return;
+    if(localSaveError){S.setStatus('Por sincronizar · '+localSaveError);return}
     if(!S.getBase())return legacySync();
     if(E('modal')?.open||document.activeElement?.matches?.('input,textarea,[contenteditable="true"]'))return;
     S.busy=true;S.setStatus('A sincronizar…');
     try{
-      const base=S.getBase(),remote=await S.fetchCloud(),local=S.snapshot();
+      const reference=S.getBase(),remote=await S.fetchCloud(),local=S.snapshot(),base=S.comparisonBase(reference,local,remote);
       S.remoteInfo=S.lastRemoteMeta?{...S.lastRemoteMeta}:null;
       const result=S.merge(base,local,remote);
       if(result.conflicts.length){
@@ -162,17 +152,15 @@
       const errors=S.validate(result.data);
       if(errors.length)throw Error('Validação de dados: '+errors.slice(0,3).join('; '));
       if(!S.eq(remote,result.data)){
-        S.backup('Antes de sincronização automática',remote);
         const latest=await S.fetchCloud();
         if(!S.eq(latest,remote))throw Error('O Drive mudou. Nova comparação necessária.');
+        S.assertLocalUnchanged(local);
         await S.upload(result.data);
         const verified=await S.fetchCloud();
         if(!S.eq(verified,result.data))throw Error('O Drive não confirmou a publicação.');
       }
-      if(!S.eq(local,result.data)){S.backup('Antes de atualizar dados locais');S.adopt(result.data)}
-      S.setBase(result.data);
-      db.settings.lastSync=new Date().toLocaleString('pt-PT');
-      localStorage.setItem(STORE,JSON.stringify(db));
+      S.assertLocalUnchanged(local);
+      S.finish(result.data);
       S.pendingConflict=null;S.track('Sincronização concluída');
       S.setStatus('Sincronizado · '+db.settings.lastSync);
     }catch(e){S.setStatus('Por sincronizar · '+e.message)}
@@ -182,7 +170,7 @@
   settingsPage=function(){
     const content=oldSettings();
     return '<section class="panel"><h2>Identidade e resolução de conflitos</h2>'+
-      '<p class="hint">Instalação: <strong>'+esc(S.deviceId())+'</strong>. Cada navegador tem um identificador persistente. As operações de substituição exigem cópia de segurança e confirmação.</p>'+
+      '<p class="hint">Instalação: <strong>'+esc(S.deviceId())+'</strong>. Cada navegador tem um identificador persistente. As operações de substituição exigem confirmação. Exporta JSON antes de substituir dados; não são criadas cópias automáticas.</p>'+
       '<div class="flex"><button class="btn" onclick="AESTSYNC.showResolver()">Comparar versões e resolver conflitos</button>'+
       '<button class="btn" onclick="exportJSON()">Descarregar cópia JSON</button></div>'+
       '<div id="syncResolverPanel">'+S.resolverHTML()+'</div></section>'+content;
@@ -190,16 +178,17 @@
   /* Old local JSON import must never silently imply a successful cloud synchronization. */
   const originalImport=importJSON;
   importJSON=async function(input){
-    S.backup('Antes de importação de JSON');
-    await originalImport(input);
-    S.pendingConflict=null;
-    S.setStatus('Dados locais importados. Necessária nova comparação com o Drive.');
+    if(S.busy){toast('A sincronização está em curso.',true);return false}
+    const ok=await originalImport(input);
+    if(ok){S.pendingConflict=null;S.setStatus('Dados locais importados. Necessária nova comparação com o Drive.')}
+    return ok;
   };
   const originalClear=clearAll;
   clearAll=function(){
-    try{S.backup('Antes de possível eliminação local')}catch(e){toast(e.message,true);return}
-    originalClear();
-    S.setStatus('Dados locais alterados. Verifica sincronização.');
+    if(S.busy){toast('A sincronização está em curso.',true);return false}
+    const ok=originalClear();
+    if(ok){S.pendingConflict=null;S.setStatus('Dados locais alterados. Verifica sincronização.')}
+    return ok;
   };
   window.addEventListener('load',()=>{S.track('Aplicação iniciada');if(view==='settings')render()});
 })();

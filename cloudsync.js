@@ -14,12 +14,16 @@ const AESTSYNC={
     for(const k of this.keys())o[k]=JSON.parse(JSON.stringify(x[k]||[]));
     return o;
   },
-  eq(a,b){return JSON.stringify(a)===JSON.stringify(b)},
-  getBase(){
-    try{const val=localStorage.getItem(this.baselineKey());return val?JSON.parse(val):null}catch(e){return null}
-  },
+  eq(a,b){return AtlasSyncStorage.equal(a,b)},
+  getBase(){return AtlasSyncStorage.readBaseline(localStorage,this.baselineKey())},
   setBase(data){
-    try{localStorage.setItem(this.baselineKey(),JSON.stringify(this.snapshot(data)))}catch(e){this.state='Sem espaço para histórico de sincronização';}
+    const compact=AtlasSyncStorage.compactBaseline(this.snapshot(data),this.lastRemoteMeta,new Date().toISOString());
+    try{localStorage.setItem(this.baselineKey(),JSON.stringify(compact))}
+    catch(e){throw Error('Não foi possível guardar a referência compacta de sincronização.')}
+  },
+  comparisonBase(base,local,remote){return AtlasSyncStorage.comparisonBase(base,local,remote)},
+  assertLocalUnchanged(expected){
+    if(localSaveError||!this.eq(expected,this.snapshot()))throw Error('Os dados locais mudaram durante a operação. É necessária nova comparação.');
   },
   setStatus(s){this.state=s;const el=E('cloudSyncState');if(el)el.textContent=s;if(typeof updateCloudHeader==='function')updateCloudHeader()},
   async fetchCloud(){
@@ -42,6 +46,7 @@ const AESTSYNC={
     return this.snapshot(data);
   },
   merge(base,local,remote){
+    base=this.comparisonBase(base,local,remote);
     const out={settings:{}};const conflicts=[];
     const pick=(b,l,r,label)=>{
       if(this.eq(l,r))return l;
@@ -66,15 +71,21 @@ const AESTSYNC={
     }
     return {data:out,conflicts};
   },
-  adopt(data){
-    try{const key='atlas_backup_cloud_'+new Date().toISOString().slice(0,10);if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(db))}catch(e){console.warn('Cópia de segurança local indisponível',e)}
+  adopt(data,draw=true){
     const localCfg={clientId:db.settings.clientId,spreadsheetId:db.settings.spreadsheetId,driveFolderId:db.settings.driveFolderId,lastSync:db.settings.lastSync};
-    for(const k of this.keys())db[k]=JSON.parse(JSON.stringify(data[k]||[]));
-    db.settings={...db.settings,...data.settings,...localCfg};
-    db.version=Math.max(2,db.version||2);
-    syncSelection();
-    localStorage.setItem(STORE,JSON.stringify(db));
-    render();
+    const next={...db,settings:{...db.settings,...data.settings,...localCfg},version:Math.max(2,db.version||2)};
+    for(const k of this.keys())next[k]=JSON.parse(JSON.stringify(data[k]||[]));
+    // Do not replace the in-memory database if its persistent write failed.
+    if(!persistLocal(next))throw Error(localSaveError);
+    db=next;syncSelection();if(draw)render();
+  },
+  finish(data){
+    // Persist the selected database BEFORE advancing the comparison reference.
+    this.adopt(data,false);
+    this.setBase(data);
+    const next={...db,settings:{...db.settings,lastSync:new Date().toLocaleString('pt-PT')}};
+    if(!persistLocal(next))throw Error(localSaveError);
+    db=next;render();
   },
   async upload(data){
     const id=db.settings.spreadsheetId;
@@ -99,6 +110,7 @@ const AESTSYNC={
   },
   async sync(){
     if(this.busy||!googleToken||!db.settings.spreadsheetId)return;
+    if(localSaveError){this.setStatus('Por sincronizar · '+localSaveError);return}
     if(E('modal')?.open||document.activeElement?.matches?.('input,textarea,[contenteditable="true"]'))return;
     if(typeof navigator!=='undefined'&&navigator.onLine===false){this.setStatus('Sem ligação à Internet');return}
     const baseline=this.getBase();
@@ -115,12 +127,12 @@ const AESTSYNC={
         // Re-fetch immediately before write. Never overwrite unexpected intervening changes.
         const latest=await this.fetchCloud();
         if(!this.eq(remote,latest)){this.setStatus('O Drive mudou durante a sincronização. A aguardar nova verificação.');return}
+        this.assertLocalUnchanged(local);
         await this.upload(merged.data);
+        if(!this.eq(await this.fetchCloud(),merged.data))throw Error('O Drive não confirmou a publicação.');
       }
-      if(!this.eq(local,merged.data))this.adopt(merged.data);
-      this.setBase(merged.data);
-      db.settings.lastSync=new Date().toLocaleString('pt-PT');
-      localStorage.setItem(STORE,JSON.stringify(db));
+      this.assertLocalUnchanged(local);
+      this.finish(merged.data);
       this.setStatus('Sincronizado · '+db.settings.lastSync);
     }catch(e){this.setStatus('Por sincronizar · '+e.message)}
     finally{this.busy=false}
@@ -163,10 +175,12 @@ function aestStampRevisions(){
 }
 save=function(){
   if(!AESTSYNC.suspendRevision)aestStampRevisions();
-  standardSave();
+  const ok=standardSave();
+  if(ok===false){AESTSYNC.setStatus('Por sincronizar · '+localSaveError);return false}
   if(googleToken&&db.settings.spreadsheetId&&AESTSYNC.getBase()&&!AESTSYNC.busy&&AESTSYNC.state.indexOf('Conflito:')!==0)AESTSYNC.setStatus('Alterações locais por sincronizar');
   AESTSYNC.schedule();
   if(typeof updateCloudHeader==='function')updateCloudHeader();
+  return ok;
 };
 const standardPushSheets=pushSheets;
 pushSheets=async function(){
@@ -202,7 +216,7 @@ function importGoogleDeviceLink(){
   if(!db.settings.clientId)db.settings.clientId=cid;
   url.searchParams.delete('aestimatio_client_id');
   try{history.replaceState(null,'',url.pathname+url.search+url.hash)}catch(e){}
-  localStorage.setItem(STORE,JSON.stringify(db));
+  persistLocal(db);
 }
 importGoogleDeviceLink();
 const previousSettingsPageCloud=settingsPage;
@@ -211,6 +225,7 @@ settingsPage=function(){
 };
 /* Header sync status: connection, pending edits, active sync and conflicts. */
 function cloudConnectionState(){
+  if(localSaveError)return {key:'error',label:'Dados locais não guardados',detail:localSaveError};
   if(typeof navigator!=='undefined'&&navigator.onLine===false)return {key:'offline',label:'Sem rede',detail:'Sem Internet: as alterações permanecem guardadas neste navegador.'};
   if(!db.settings.clientId)return {key:'disconnected',label:'Google desligado',detail:'Configura primeiro o Client ID OAuth nas Definições.'};
   if(!googleToken)return {key:'disconnected',label:'Ligar Google',detail:'Sessão Google não autorizada ou expirada. Clica para autenticar.'};
@@ -221,7 +236,7 @@ function cloudConnectionState(){
   const base=AESTSYNC.getBase();
   if(!base)return {key:'pending',label:'Ativar sincronização',detail:'Faz primeiro um envio ou importação nas Definições.'};
   try{
-    if(!AESTSYNC.eq(base,AESTSYNC.snapshot()))return {key:'pending',label:'Pendente',detail:'Existem alterações locais por enviar ao Google Sheets. Clica para sincronizar.'};
+    if(!AtlasSyncStorage.matches(base,AESTSYNC.snapshot()))return {key:'pending',label:'Pendente',detail:'Existem alterações locais por enviar ao Google Sheets. Clica para sincronizar.'};
   }catch(e){return {key:'error',label:'Verificar ligação',detail:'Não foi possível verificar o estado local.'}}
   if(/^Sincronizado|^Sincronização automática ativada/i.test(AESTSYNC.state))return {key:'synced',label:'Sincronizado',detail:'Google Sheets sincronizado na última verificação. Clica para verificar agora.'};
   if(/^A atualizar a lista/i.test(AESTSYNC.state))return {key:'pending',label:'Pendente',detail:AESTSYNC.state};

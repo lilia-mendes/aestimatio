@@ -102,7 +102,7 @@ Em **Definições → Segurança e cópias de segurança**:
 - **Cópia JSON:** exporta os dados da aplicação para arquivo ou recuperação.
 - **Importar JSON:** substitui os dados locais após confirmação; criar previamente uma cópia dos dados que se pretendem conservar.
 
-A aplicação inclui também cópias locais preventivas em algumas operações de migração e sincronização. Estas cópias **não substituem** uma estratégia de backup independente e protegida.
+A aplicação mantém uma única base de dados integral no navegador. Não cria cópias automáticas locais durante sincronizações, migrações ou resolução de conflitos. As exportações JSON manuais permitem manter uma cópia independente.
 
 ## 6. Google Sheets e sincronização automática
 
@@ -123,8 +123,8 @@ A integração é opcional e utiliza **Google Identity Services**, **Google Driv
 Com sessão Google válida, spreadsheet identificada e sincronização previamente inicializada:
 
 - Os dados são guardados localmente e a aplicação **tenta sincronizar automaticamente** após alterações (com um curto intervalo), ao regressar à janela e em verificações periódicas.
-- Antes de enviar, o código compara dados locais, base anterior e dados remotos. Alterações independentes podem ser conciliadas; alterações concorrentes incompatíveis são sinalizadas como **conflito**.
-- Em conflito, a sincronização automática **não deve substituir** os dados remotos. É necessária revisão humana e uma cópia de segurança.
+- Antes de enviar, o código compara os dados locais e remotos através de uma referência compacta da última sincronização (identificadores, revisões e assinaturas SHA-256). Alterações independentes podem ser conciliadas; alterações concorrentes incompatíveis são sinalizadas como **conflito**.
+- Em conflito, a sincronização automática **não deve substituir** os dados remotos. É necessária revisão humana. Antes de uma substituição, pode ser exportada uma cópia JSON manual.
 - Se a ligação falhar, os dados locais permanecem no navegador; o envio não deve ser assumido como concluído.
 - O indicador no topo representa **Sincronizado/A sincronizar** com tomadas ligadas e **Pendente, Sem rede, Google desligado ou Conflito/erro** com tomadas separadas. O ícone **nunca roda nem pisca**; o detalhe do estado está disponível no título do botão e para tecnologias de apoio.
 - A barra fixa usa um **gradiente avermelhado** quando não existe sincronização confirmada. Clicar no ícone permite tentar sincronizar ou voltar a autenticar; em conflito encaminha para as Definições.
@@ -191,11 +191,11 @@ As publicações feitas pela nova rotina guardam também metadados de revisão, 
 
 ## Segunda fase: resolução individual, eliminações e histórico (22/11/2026)
 
-A interface de conflitos passou a incluir **Escolher a versão de cada registo incompatível**, além das quatro opções globais. Cada decisão seleciona a versão local ou do Drive, inclusive quando o registo foi eliminado numa origem. A pré-visualização executa validações de referências antes de permitir publicar. As escritas no Drive exigem duas confirmações, uma cópia de recuperação e uma leitura final de confirmação.
+A interface de conflitos passou a incluir **Escolher a versão de cada registo incompatível**, além das quatro opções globais. Cada decisão seleciona a versão local ou do Drive, inclusive quando o registo foi eliminado numa origem. A pré-visualização executa validações de referências antes de permitir publicar. As escritas no Drive exigem duas confirmações e uma leitura final de confirmação. Não é criada uma cópia automática local.
 
 As eliminações realizadas através do guardado normal passam a gerar **marcadores de eliminação** na coleção `deletions`, publicada na nova folha **Eliminacoes**. Quando há marcador e a outra versão conserva apenas o mesmo registo original, a eliminação pode propagar-se. Quando há alteração concorrente, o estado é considerado conflito; um registo sem revisão verificável não é apagado automaticamente. Eliminações anteriores à introdução dos marcadores não são reconstruíveis retroativamente.
 
-Em **Definições**, o histórico técnico apresenta operações recentes por instalação e disponibiliza as cópias preventivas locais para descarregar. As cópias descarregadas são contentores de recuperação (incluem dados, base e possivelmente imagem remota), não ficheiros diretamente importáveis pelo importador JSON da aplicação. Para restaurar, extrair a propriedade `data` depois de analisar o conteúdo. A criação do histórico local não equivale a auditoria transacional de cada classificação.
+Em **Definições**, o histórico técnico apresenta operações recentes por instalação. A versão atual não cria cópias preventivas locais. As antigas cópias permanecem disponíveis para exportação num arquivo de migração antes de serem removidas. A criação do histórico local não equivale a auditoria transacional de cada classificação.
 
 **Pendências:** proteção contra escritas concorrentes com serviço de coordenação ou base de dados transacional; testes reais de dois dispositivos, restauração a partir de cópias, semântica de eliminação em cascata e testes de carga. A Google Sheets API, sem coordenação adicional, não garante uma escrita condicional atómica. Não utilizar com classificações reais sem testar essas situações e manter uma exportação independente.
 
@@ -205,7 +205,7 @@ Os **eventos técnicos de sincronização** passam a ser arquivados em ficheiros
 
 Eventos ainda não enviados permanecem numa fila local no navegador; se o Google Drive falhar, a fila não é eliminada. O Atlas tenta arquivar após sincronizações e quando regressa a ligação, e disponibiliza em **Definições → Arquivo do histórico técnico** um botão para enviar eventos pendentes e consultar erros. O histórico técnico local anterior é transferido para esta fila na primeira execução da versão. A operação de sincronização de avaliações **não depende** do sucesso do arquivo; consultar o estado de arquivo separadamente. A pasta history não é pesquisada como base de dados ativa.
 
-**Nota:** as cópias JSON preventivas de recuperação e os dados de alunos **não** são transferidos automaticamente para a pasta history. Continuam sob controlo local para evitar expor avaliações e para não confundir auditoria técnica com cópias de segurança. A criação real da pasta e o envio dependem de autorização Google, Internet e permissões sobre o Drive; verificar o indicador em Definições.
+**Nota:** as exportações JSON e os dados de alunos **não** são transferidos automaticamente para a pasta history. O arquivo técnico contém apenas eventos, não uma base de dados. A criação real da pasta e o envio dependem de autorização Google, Internet e permissões sobre o Drive; verificar o indicador em Definições.
 
 
 ## Critérios de correção por pergunta (novembro de 2026)
@@ -220,3 +220,17 @@ Os critérios são guardados no campo `questions[].criteria`, e as pontuações 
 ### Notas já atribuídas e critérios adicionados posteriormente
 
 É possível adicionar ou alterar critérios em perguntas que já tenham classificações diretas, sem exigir a recorreção dos alunos. As notas existentes ficam preservadas como **classificações manuais**; os detalhes de critérios antigos incompatíveis são limpos e podem ser preenchidos posteriormente. Uma nota manual é válida mesmo com critérios por preencher e só é substituída quando o professor optar expressamente pelo modo automático. Permanecem os limites de cotação da pergunta e as proteções anteriores contra apagar perguntas já classificadas. Recomenda-se exportar uma cópia JSON antes de edições em massa ou sincronizações concorrentes.
+
+
+## Armazenamento único e referência compacta (28/11/2026)
+
+- A única base de dados integral persistente ativa é `atlas_sumativa_v1`. Não se criam novas chaves `atlas_recovery_*`, `atlas_backup_cloud_*`, `atlas_backup_before_v3` nem `atlas_backup_pre_regimes_*`.
+- As referências `atlas_sync_baseline_*` guardam apenas identificadores, revisões, assinaturas SHA-256 dos registos e das definições partilhadas, identificação da revisão remota e data de confirmação. A versão remota é obtida em memória. A comparação preserva a lógica de três vias; os registos escolhidos provêm sempre de uma das duas versões atuais.
+- No arranque, referências integrais antigas são substituídas no mesmo endereço pela representação compacta. As antigas cópias de recuperação não são eliminadas sem salvaguarda: em Definições → Histórico técnico de sincronização, descarregar o arquivo, confirmar que ficou guardado e selecionar Confirmar limpeza. A base principal não é eliminada. A limpeza pode ser repetida após interrupção.
+- O arquivo de migração contém `activeData` e as entradas antigas (`entries[].key`, `entries[].raw`). Não deve ser importado diretamente. O JSON de `activeData`, ou o campo `data` de uma antiga recuperação após análise, pode ser exportado separadamente para restauro.
+- Uma falha de gravação local é explícita; a referência de sincronização só avança depois de os dados locais escolhidos terem sido guardados. Uma alteração local durante uma operação remota impede a substituição automática dos dados locais; uma nova comparação é necessária.
+- O histórico técnico e a exportação manual JSON mantêm-se. A Google Sheets API não oferece uma operação de compare-and-swap atómica; continua a existir uma janela residual de concorrência entre leitura e publicação.
+
+### Testes unitários
+
+Executar `node --test` com Node.js 22 ou posterior. Os testes usam dados fictícios, armazenamento em memória e simulações da API Google. Não contactam a folha real nem exigem testes manuais. O workflow Unit tests executa a mesma suite em pushes e pull requests. A publicação no GitHub Pages a partir de uma branch não é automaticamente condicionada por esse workflow sem configuração de proteção da branch ou alteração da origem de publicação.
