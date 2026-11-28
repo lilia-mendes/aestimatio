@@ -14,13 +14,16 @@
 <body>
 <div class="app" id="app"><aside class="sidebar" id="sidebar"><div class="brand">✦ Atlas <small>Avaliação sumativa</small></div><nav class="nav" id="nav" aria-label="Navegação principal"></nav><div class="sidefoot">Dados guardados neste navegador.<br><span id="saveState">Pronto para trabalhar</span></div></aside><div class="sidebar-scrim" id="sidebarScrim" onclick="closeSidebar()"></div><main class="main"><div id="globalStickyHeader" class="global-sticky-header" aria-hidden="true"><div class="global-sticky-inner"><button type="button" class="menu-toggle global-sticky-menu" id="globalMenuToggle" onclick="toggleSidebar()" aria-label="Abrir menu lateral" aria-controls="sidebar" aria-expanded="true">☰</button><strong id="globalStickyTitle" class="global-sticky-title">Aestimatio</strong><button class="cloud-status-action" id="globalCloudSyncButton" type="button" onclick="cloudSyncAction()" aria-label="Verificar sincronização Google" title="Verificar sincronização Google"><span class="cloud-status-symbol" aria-hidden="true">🔌</span></button></div></div><div class="top"><div class="top-heading"><button class="menu-toggle" id="menuToggle" type="button" aria-label="Abrir menu lateral" aria-expanded="true" aria-controls="sidebar" onclick="toggleSidebar()">☰</button><div><div class="eyebrow" id="crumb">PAINEL DE CONTROLO</div><h1 id="pageTitle">Avaliação das turmas</h1><div class="muted" id="subtitle">Organiza resultados e acompanha a evolução.</div></div></div><div class="toolbar"><button class="cloud-status-action cloud-status-toolbar" id="topCloudSyncButton" type="button" onclick="cloudSyncAction()" aria-label="Verificar sincronização Google" title="Verificar sincronização Google"><span class="cloud-status-symbol" aria-hidden="true">🔌</span></button></div></div><div id="content"></div><div class="footerline">Atlas · Aplicação local e estática · As notas são calculadas a partir das classificações registadas.</div></main></div>
 <div id="toast" class="toast"></div><dialog id="modal" class="dialog"><div class="head"><h2 id="modalTitle" style="margin:0"></h2></div><form id="modalForm"><div class="body" id="modalBody"></div><div class="foot"><button type="button" class="btn" onclick="closeModal()">Cancelar</button><button type="submit" class="btn primary" id="modalSave">Guardar</button></div></form></dialog>
+<script src="sync-storage.js?v=1"></script>
 <script>
 'use strict';
 const STORE='atlas_sumativa_v1', LEGACY_STORE='atlas_'+'som'+'ativa_v1';
+AtlasSyncStorage.migrateBaselines(localStorage);
+let localSaveError='';
 const uid=()=>crypto.randomUUID?crypto.randomUUID():'id_'+Date.now()+'_'+Math.random().toString(36).slice(2);
 const empty=()=>({version:2,schoolYears:[],regimes:[],classes:[],students:[],periods:[],assessments:[],questions:[],grades:[],stars:[],settings:{yearMethod:'average',starMax:25,starBonus:1,clientId:'',spreadsheetId:'',driveFolderId:'',lastSync:''}});
 let db;try{db=JSON.parse(localStorage.getItem(STORE)||localStorage.getItem(LEGACY_STORE))||empty()}catch{db=empty()};for(const k of ['schoolYears','regimes','classes','students','periods','assessments','questions','grades','stars'])if(!Array.isArray(db[k]))db[k]=[];db.settings={...empty().settings,...db.settings};
-function migrateData(data){if(data.version>=2)return data;const old=JSON.stringify(data);try{localStorage.setItem('atlas_backup_pre_regimes_'+new Date().toISOString(),old)}catch(e){console.warn('Backup local indisponível',e)}const years=new Map(),regimes=new Map(),mapping=new Map();const yearFor=name=>{name=name||'2026/2027';if(!years.has(name)){const y={id:uid(),name,start:'',end:''};years.set(name,y);data.schoolYears.push(y)}return years.get(name)};for(const c of data.classes){const y=yearFor(c.schoolYear),oldPs=data.periods.filter(p=>p.classId===c.id).sort((a,b)=>a.order-b.order),type=oldPs.some(p=>/semestre/i.test(p.name))?'semestral':oldPs.some(p=>/trimestre|período|periodo/i.test(p.name))?'trimestral':oldPs.length===2?'semestral':oldPs.length===3?'trimestral':'personalizado';const signature=JSON.stringify(oldPs.map(p=>[p.order,p.name,p.start||'',p.end||'']));const key=y.id+'|'+type+'|'+signature;let regime=regimes.get(key);if(!regime){regime={id:uid(),schoolYearId:y.id,type,name:type==='semestral'?'Regime semestral':type==='trimestral'?'Regime trimestral':'Regime personalizado'};regimes.set(key,regime);data.regimes.push(regime);for(const p of oldPs){p.regimeId=regime.id;delete p.classId}}else{for(let i=0;i<oldPs.length;i++)mapping.set(oldPs[i].id,data.periods.find(p=>p.regimeId===regime.id&&p.order===oldPs[i].order&&p.name===oldPs[i].name).id)}c.schoolYearId=y.id;c.regimeId=regime.id;delete c.schoolYear}data.periods=data.periods.filter(p=>!mapping.has(p.id));for(const a of data.assessments)if(mapping.has(a.periodId))a.periodId=mapping.get(a.periodId);for(const e of data.stars)if(mapping.has(e.periodId))e.periodId=mapping.get(e.periodId);data.version=2;return data}
+function migrateData(data){if(data.version>=2)return data;const years=new Map(),regimes=new Map(),mapping=new Map();const yearFor=name=>{name=name||'2026/2027';if(!years.has(name)){const y={id:uid(),name,start:'',end:''};years.set(name,y);data.schoolYears.push(y)}return years.get(name)};for(const c of data.classes){const y=yearFor(c.schoolYear),oldPs=data.periods.filter(p=>p.classId===c.id).sort((a,b)=>a.order-b.order),type=oldPs.some(p=>/semestre/i.test(p.name))?'semestral':oldPs.some(p=>/trimestre|período|periodo/i.test(p.name))?'trimestral':oldPs.length===2?'semestral':oldPs.length===3?'trimestral':'personalizado';const signature=JSON.stringify(oldPs.map(p=>[p.order,p.name,p.start||'',p.end||'']));const key=y.id+'|'+type+'|'+signature;let regime=regimes.get(key);if(!regime){regime={id:uid(),schoolYearId:y.id,type,name:type==='semestral'?'Regime semestral':type==='trimestral'?'Regime trimestral':'Regime personalizado'};regimes.set(key,regime);data.regimes.push(regime);for(const p of oldPs){p.regimeId=regime.id;delete p.classId}}else{for(let i=0;i<oldPs.length;i++)mapping.set(oldPs[i].id,data.periods.find(p=>p.regimeId===regime.id&&p.order===oldPs[i].order&&p.name===oldPs[i].name).id)}c.schoolYearId=y.id;c.regimeId=regime.id;delete c.schoolYear}data.periods=data.periods.filter(p=>!mapping.has(p.id));for(const a of data.assessments)if(mapping.has(a.periodId))a.periodId=mapping.get(a.periodId);for(const e of data.stars)if(mapping.has(e.periodId))e.periodId=mapping.get(e.periodId);data.version=2;return data}
 db=migrateData(db);
 let view='dashboard',classId=db.classes[0]?.id||'',periodId='',assessmentId='',draftQuestions=[],modalSubmit=null,tokenClient=null,googleToken='',docItems=[];
 const $=s=>document.querySelector(s), E=s=>document.getElementById(s);
@@ -33,7 +36,16 @@ const periods=()=>db.periods.filter(p=>p.regimeId===by('classes',classId)?.regim
 const students=()=>inClass('students').sort((a,b)=>a.name.localeCompare(b.name,'pt'));
 const assessments=(p=periodId)=>inClass('assessments').filter(a=>a.periodId===p).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 const questions=a=>db.questions.filter(q=>q.assessmentId===a).sort((x,y)=>x.order-y.order);
-function save(){localStorage.setItem(STORE,JSON.stringify(db));E('saveState').textContent='Guardado às '+new Date().toLocaleTimeString('pt-PT');}
+function persistLocal(data){
+  try{
+    localStorage.setItem(STORE,JSON.stringify(data));
+    localSaveError='';E('saveState').textContent='Guardado às '+new Date().toLocaleTimeString('pt-PT');return true;
+  }catch(e){
+    localSaveError='Não foi possível guardar os dados locais. Exporta JSON e verifica o armazenamento antes de continuar.';
+    E('saveState').textContent=localSaveError;toast(localSaveError,true);return false;
+  }
+}
+function save(){return persistLocal(db)}
 function toast(s,error=false){const n=E('toast'),dialog=E('modal');if(dialog?.open){if(n.parentNode!==dialog)dialog.appendChild(n)}else if(n.parentNode!==document.body)document.body.appendChild(n);n.textContent=s;n.className='toast'+(error?' error':'');n.setAttribute('role',error?'alert':'status');n.setAttribute('aria-live',error?'assertive':'polite');n.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>n.style.display='none',4200)}
 E('modal').addEventListener('close',()=>{const n=E('toast');if(n.parentNode!==document.body)document.body.appendChild(n)});
 function syncSelection(){if(!by('classes',classId))classId=db.classes[0]?.id||'';if(!periods().some(p=>p.id===periodId))periodId=periods()[0]?.id||'';if(!assessments().some(a=>a.id===assessmentId))assessmentId=assessments()[0]?.id||''}
@@ -92,8 +104,19 @@ function saveSettings(){const a=Number(E('cfgMax').value),b=Number(E('cfgBonus')
 function saveGoogleSettings(){db.settings.clientId=E('cfgClient').value.trim();db.settings.spreadsheetId=E('cfgSheet').value.trim();googleToken='';tokenClient=null;save();render();toast('Configuração Google guardada')}
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
 function exportJSON(){downloadBlob(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),'atlas_copia_'+new Date().toISOString().slice(0,10)+'.json')}
-async function importJSON(input){const file=input.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.classes)||!Array.isArray(data.grades)||!data.settings)throw Error('Ficheiro de dados inválido');if(!confirm('Substituir TODOS os dados locais pelos do ficheiro?'))return;db={...empty(),...data,settings:{...empty().settings,...data.settings}};db=migrateData(db);save();classId='';periodId='';render();toast('Cópia de segurança importada')}catch(e){toast(e.message,true)}input.value=''}
-function clearAll(){if(!confirm('Apagar TODOS os dados do navegador? Esta ação é irreversível.'))return;if(!confirm('Confirmas a eliminação definitiva dos dados locais?'))return;db=empty();classId='';periodId='';assessmentId='';save();render();toast('Dados locais eliminados')}
+async function importJSON(input){
+  const file=input.files[0];if(!file)return false;
+  try{
+    const data=JSON.parse(await file.text());
+    if(!data||!Array.isArray(data.classes)||!Array.isArray(data.grades)||!data.settings)throw Error('Ficheiro de dados inválido');
+    if(!confirm('Substituir TODOS os dados locais pelos do ficheiro? Não será criada cópia automática. Exporta JSON antes, se necessário.'))return false;
+    const next=migrateData({...empty(),...data,settings:{...empty().settings,...data.settings}});
+    if(!persistLocal(next))return false;
+    db=next;classId='';periodId='';assessmentId='';render();toast('Cópia de segurança importada');return true;
+  }catch(e){toast(e.message,true);return false}
+  finally{input.value=''}
+}
+function clearAll(){if(!confirm('Apagar TODOS os dados do navegador? Não será criada cópia automática. Exporta JSON antes, se necessário.'))return false;if(!confirm('Confirmas a eliminação definitiva dos dados locais?'))return false;const next=empty();if(!persistLocal(next))return false;db=next;classId='';periodId='';assessmentId='';render();toast('Dados locais eliminados');return true}
 function excelSheets(){const rows=[];for(const c of db.classes){for(const s of db.students.filter(x=>x.classId===c.id)){const pr=db.periods.filter(x=>x.regimeId===c.regimeId).sort((a,b)=>a.order-b.order);for(const p of pr){const r=periodResult(s.id,p.id);rows.push({Turma:c.name,'Ano letivo':by('schoolYears',c.schoolYearId)?.name,Numero:s.number,Aluno:s.name,Periodo:p.name,'Nota base /20':r?.base??'','Estrelas':starCount(s.id,p.id),'Bonus /20':r?.bonus??bonus(s.id,p.id),'Nota final /20':r?.total??'','Nota anual /20':annualResult(s.id)??''})}}}const detailed=[];for(const a of db.assessments){const c=by('classes',a.classId),p=by('periods',a.periodId);for(const s of db.students.filter(x=>x.classId===a.classId)){const r=assessmentResult(a,s.id);detailed.push({Turma:c?.name||'',Periodo:p?.name||'',Aluno:s.name,Numero:s.number,Avaliacao:a.name,Tipo:a.type,Data:a.date,Peso:a.weight,'Pontos obtidos':r?.earned??'','Pontos possiveis':r?.total??'','Classificacao /200':r?.score200??'','Classificacao /20':r?.score20??'',Corrigidas:r?.filled??0,'Total de perguntas':questions(a.id).length})}}const domains=[];for(const a of db.assessments){const ds=[...new Set(questions(a.id).map(q=>q.domain))];for(const s of db.students.filter(x=>x.classId===a.classId))for(const d of ds)domains.push({Turma:by('classes',a.classId)?.name||'',Periodo:by('periods',a.periodId)?.name||'',Avaliacao:a.name,Aluno:s.name,Dominio:d,'Resultado %':domainResult(a.id,s.id,d)??''})}const pointRows=[];for(const a of db.assessments)for(const s of db.students.filter(x=>x.classId===a.classId))for(const q of questions(a.id))pointRows.push({Turma:by('classes',a.classId)?.name||'',Periodo:by('periods',a.periodId)?.name||'',Aluno:s.name,Avaliacao:a.name,Pergunta:q.name,Dominio:q.domain,'Cotacao':q.max,'Pontos':grade(a.id,s.id,q.id)??''});return {'Resumo de notas':rows,'Avaliacoes':detailed,'Dominios':domains,'Perguntas e notas':pointRows,'Anos letivos':db.schoolYears,'Regimes':db.regimes,'Turmas':db.classes,'Alunos':db.students,'Periodos':db.periods,'Configuracao':[{'Metodo anual':db.settings.yearMethod==='average'?'Média dos períodos':'Último período','Max estrelas':db.settings.starMax,'Bonus max /20':db.settings.starBonus}]}}
 function exportExcel(){if(typeof XLSX==='undefined'){toast('A biblioteca Excel não carregou. Liga-te à internet e volta a tentar.',true);return}const wb=XLSX.utils.book_new();for(const [name,rows] of Object.entries(excelSheets())){const sheet=XLSX.utils.json_to_sheet(rows.length?rows:[{Info:'Sem dados'}]);sheet['!cols']=Object.keys(rows[0]||{Info:''}).map(k=>({wch:Math.min(38,Math.max(13,k.length+4))}));XLSX.utils.book_append_sheet(wb,sheet,name.slice(0,31))}XLSX.writeFile(wb,'atlas_avaliacao_'+new Date().toISOString().slice(0,10)+'.xlsx');toast('Excel exportado com folhas organizadas')}
 // Google OAuth via GIS + Google Sheets REST. All sync actions are explicit.
@@ -178,11 +201,11 @@ async function listDocs(){
 async function copyDocId(id){try{await navigator.clipboard.writeText(id);toast('ID copiado')}catch(e){toast('Não foi possível copiar o ID',true)}}
 save();render();
 </script>
-<script src="enhancements.js?v=13"></script>
+<script src="enhancements.js?v=14"></script>
 <script src="criteria.js?v=3"></script>
-<script src="cloudsync.js?v=6"></script>
-<script src="sync-resolver.js?v=2"></script>
-<script src="sync-phase2.js?v=3"></script>
-<script src="sync-history.js?v=1"></script>
+<script src="cloudsync.js?v=7"></script>
+<script src="sync-resolver.js?v=3"></script>
+<script src="sync-phase2.js?v=4"></script>
+<script src="sync-history.js?v=2"></script>
 </body>
 </html>

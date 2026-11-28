@@ -116,7 +116,7 @@
       localStorage.removeItem(LAST_ERROR);
       return true;
     }catch(e){
-      localStorage.setItem(LAST_ERROR,e.message||'Falha ao arquivar');
+      try{localStorage.setItem(LAST_ERROR,e.message||'Falha ao arquivar')}catch(_){}
       return false; // Never remove unarchived records
     }finally{uploading=false}
   };
@@ -130,7 +130,7 @@
   settingsPage=function(){
     const content=priorSettings();
     return content+'<section class="panel"><h2>Arquivo do histórico técnico</h2>'+
-      '<p class="hint">Os eventos técnicos são arquivados na pasta <strong>/aestimatio/history</strong> do Google Drive, fora da folha principal de avaliações. As cópias de recuperação continuam disponíveis neste navegador.</p>'+
+      '<p class="hint">Os eventos técnicos são arquivados na pasta <strong>/aestimatio/history</strong> do Google Drive, fora da folha principal de avaliações. O arquivo técnico não contém cópias integrais da base de dados.</p>'+
       '<div class="note">'+esc(S.historyStorageStatus())+'</div>'+
       '<button class="btn" onclick="AESTSYNC.flushHistory().then(ok=>{toast(ok?\'Histórico arquivado no Drive.\':\'Histórico pendente: verifica a ligação Google.\',!ok);render()})">Arquivar eventos pendentes</button></section>';
   };

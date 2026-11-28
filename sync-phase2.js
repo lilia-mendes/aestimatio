@@ -6,12 +6,10 @@
   if(!TABNAMES.deletions)TABNAMES.deletions='Eliminacoes';
   if(!Array.isArray(db.deletions))db.deletions=[];
   const labels={schoolYears:'Anos letivos',regimes:'Regimes',classes:'Turmas',students:'Alunos',periods:'Períodos',assessments:'Avaliações',questions:'Perguntas',grades:'Classificações',stars:'Estrelas',domainConfigs:'Domínios',deletions:'Eliminações'};
-  const oldBackup=S.backup.bind(S);
-  S.backup=function(reason,remote){return oldBackup(reason,remote)};
   /* Keep deletion markers on normal saves, but never mark records removed by a cloud import or adoption. */
   const earlierSave=save;
   save=function(){
-    if(!S.busy&&!S.suspendRevision){
+    if(!S.suspendRevision){
       let previous={};
       try{previous=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){}
       if(!Array.isArray(db.deletions))db.deletions=[];
@@ -27,8 +25,8 @@
         }
       }
     }
-    earlierSave();
-    if(!S.busy&&!S.suspendRevision){
+    const ok=earlierSave();if(ok===false)return false;
+    if(!S.suspendRevision){
       try{
         const previous=JSON.parse(localStorage.getItem('atlas_sync_edit_snapshot')||'null');
         const current={};
@@ -40,6 +38,7 @@
         localStorage.setItem('atlas_sync_edit_snapshot',JSON.stringify(current));
       }catch(e){}
     }
+    return ok;
   };
   const oldValidate=S.validate.bind(S);
   S.validate=function(data){
@@ -50,6 +49,7 @@
     return [...new Set(errors)];
   };
   S.recordConflicts=function(base,local,remote){
+    base=S.comparisonBase(base,local,remote);
     const conflicts=[],merge=S.merge(base,local,remote);
     for(const k of S.keys().filter(x=>x!=='deletions')){
       const b=new Map((base[k]||[]).map(x=>[x.id,x]));
@@ -100,6 +100,7 @@
   /* Three-way merge with explicit delete markers: delete-vs-edit remains a conflict. */
   const originalMerge=S.merge.bind(S);
   S.merge=function(base,local,remote){
+    base=S.comparisonBase(base,local,remote);
     const b={...base,deletions:base.deletions||[]},l={...local,deletions:local.deletions||[]},r={...remote,deletions:remote.deletions||[]};
     const merged=originalMerge(b,l,r);
     const deletions=new Map([...(l.deletions||[]),...(r.deletions||[])].map(t=>[t.id,t]));
@@ -170,47 +171,63 @@
     const p=S.pendingConflict;if(!p)return;
     const result=S.individualResult(p),errors=S.validate(result);
     if(errors.length){toast('Não é possível aplicar: '+errors.slice(0,2).join('; '),true);return}
-    if(!confirm('Aplicar as decisões por registo e atualizar os dados do Drive?'))return;
+    if(!confirm('Aplicar as decisões por registo e atualizar os dados do Drive? Não será criada cópia automática. Exporta JSON antes, se necessário.'))return;
     if(!confirm('SEGUNDA CONFIRMAÇÃO: publicar as decisões individuais no Google Drive?'))return;
     if(S.busy)return;
     S.busy=true;S.setStatus('A resolver conflitos individuais…');
     try{
-      S.backup('Antes de resolver conflitos individuais',p.remote);
+      S.assertLocalUnchanged(p.local);
       const latest=await S.fetchCloud();
       if(!S.eq(latest,p.remote))throw Error('O Drive mudou. Volta a comparar as versões.');
+      S.assertLocalUnchanged(p.local);
       await S.upload(result);
       const confirmed=await S.fetchCloud();
       if(!S.eq(confirmed,result))throw Error('Não foi possível confirmar os dados publicados.');
-      S.adopt(result);S.setBase(result);
-      db.settings.lastSync=new Date().toLocaleString('pt-PT');
-      localStorage.setItem(STORE,JSON.stringify(db));
+      S.assertLocalUnchanged(p.local);
+      S.finish(result);
       S.pendingConflict=null;S.individualSelections={};
       S.track('Resolução individual concluída');
       S.setStatus('Sincronizado · '+db.settings.lastSync);render();toast('Conflitos individuais resolvidos.');
     }catch(e){S.setStatus('Por sincronizar · '+e.message);toast(e.message,true)}
     finally{S.busy=false}
   };
-  S.downloadRecovery=function(key){
+  // Legacy copies are never created again. Existing copies remain until
+  // the user has downloaded and explicitly confirmed a separate archive.
+  let legacyToken=null;
+  S.downloadLegacyCopies=function(){
     try{
-      const raw=localStorage.getItem(key);
-      if(!raw)throw Error('A cópia já não está disponível neste navegador.');
-      const item=JSON.parse(raw);
-      downloadBlob(new Blob([JSON.stringify(item,null,2)],{type:'application/json'}),'atlas_recuperacao_'+item.createdAt.replace(/[:.]/g,'-')+'.json');
-      S.track('Cópia de recuperação descarregada');
-    }catch(e){toast('Erro ao descarregar cópia: '+e.message,true)}
+      const archive=AtlasSyncStorage.captureLegacy(localStorage);
+      if(!archive.entries.length){toast('Não existem cópias antigas.');return}
+      archive.activeData=db;
+      downloadBlob(new Blob([JSON.stringify(archive)],{type:'application/json'}),'aestimatio_arquivo_antigo_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');
+      legacyToken=AtlasSyncStorage.cleanupToken(archive);
+      toast('Confirma que o ficheiro foi descarregado antes de limpar as cópias antigas.');render();
+    }catch(e){toast('Erro ao exportar arquivo: '+e.message,true)}
+  };
+  S.cleanLegacyCopies=function(){
+    if(!legacyToken||S.busy)return;
+    if(!confirm('Confirmas que guardaste o arquivo JSON e que pretendes remover apenas as antigas cópias redundantes deste navegador?'))return;
+    try{
+      const removed=AtlasSyncStorage.removeLegacy(localStorage,legacyToken);
+      const ok=save();
+      // A legacy primary key is removable only after the current key exists.
+      if(ok!==false)removed.push(...AtlasSyncStorage.removeLegacy(localStorage,legacyToken));
+      legacyToken=null;S.track('Cópias antigas removidas: '+removed.length);render();
+      toast(removed.length+' cópia(s) antiga(s) removida(s). A base de dados principal foi conservada.');
+    }catch(e){toast('Limpeza não concluída: '+e.message,true)}
   };
   const priorSettings=settingsPage;
   settingsPage=function(){
     const log=(()=>{try{return JSON.parse(localStorage.getItem('atlas_sync_audit')||'[]')}catch(e){return []}})();
     const entries=log.slice(0,20).map(x=>'<tr><td>'+esc(new Date(x.at).toLocaleString('pt-PT'))+'</td><td>'+esc(x.action)+'</td><td>'+esc(x.device||'')+'</td></tr>').join('');
-    const recovered=Object.keys(localStorage).filter(x=>x.startsWith('atlas_recovery_')).sort().reverse();
-    const backups=recovered.map(k=>{let detail;try{detail=JSON.parse(localStorage.getItem(k)||'{}')}catch(e){return ''}
-      return '<div class="flex between"><span>'+esc(new Date(detail.createdAt||Date.now()).toLocaleString('pt-PT'))+' · '+esc(detail.reason||'Cópia de segurança')+'</span><button class="btn small" onclick="AESTSYNC.downloadRecovery(&quot;'+esc(k)+'&quot;)">Descarregar</button></div>';
-    }).join('');
+    const old=AtlasSyncStorage.legacyKeys(localStorage);
+    const legacy=old.length?'<div class="note"><strong>Limpeza de cópias antigas ('+old.length+')</strong><p>As novas sincronizações não criam cópias integrais. Descarrega o arquivo das cópias existentes, verifica que ficou guardado e confirma a limpeza.</p>'+
+      '<div class="flex"><button class="btn" onclick="AESTSYNC.downloadLegacyCopies()">Descarregar arquivo de cópias antigas</button>'+
+      '<button class="btn" '+(legacyToken?'':'disabled')+' onclick="AESTSYNC.cleanLegacyCopies()">Confirmar limpeza</button></div></div>':
+      '<p class="hint">Não existem cópias integrais redundantes neste navegador.</p>';
     return priorSettings()+'<section class="panel"><h2>Histórico técnico de sincronização</h2>'+
-      '<p class="hint">Regista operações locais recentes (não substitui um histórico de todas as classificações).</p>'+
-      '<details><summary>Consultar últimas operações ('+log.length+')</summary><table><thead><tr><th>Data</th><th>Operação</th><th>Dispositivo</th></tr></thead><tbody>'+entries+'</tbody></table></details>'+ 
-      '<details><summary>Cópias de recuperação neste navegador ('+recovered.length+')</summary><p class="hint">Descarrega antes de limpar os dados do navegador. A recuperação nunca é aplicada automaticamente.</p>'+backups+'</details></section>';
+      '<p class="hint">Regista operações locais recentes, sem duplicar a base de dados.</p>'+
+      '<details><summary>Consultar últimas operações ('+log.length+')</summary><table><thead><tr><th>Data</th><th>Operação</th><th>Dispositivo</th></tr></thead><tbody>'+entries+'</tbody></table></details>'+legacy+'</section>';
   };
   /* Automatic sync already checks every conflict; do not silently publish over a deleted record. */
 })();
